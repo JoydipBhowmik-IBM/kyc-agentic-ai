@@ -14,6 +14,8 @@ services:
       context: ./api-gateway
     ports:
       - "8000:8000"
+    environment:
+      - ORCHESTRATION_SERVICE_URL=http://orchestration-service:8010
 
   orchestration-service:
     build:
