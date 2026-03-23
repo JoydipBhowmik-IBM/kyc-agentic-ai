@@ -59,6 +59,12 @@ class DocumentValidator:
             r'election\s*commission',
             r'epic\s*number',
             r'voter\s*card',
+            r'epic',
+            r'elector',
+            r'electoral',
+            r'voter\s*slip',
+            r'voter\s*list',
+            r'chief\s*electoral',
         ]
         
         self.bank_statement_patterns = [
@@ -154,6 +160,10 @@ class DocumentValidator:
         if any(keyword in text_lower for keyword in ['driving license', 'driving licence', 'driver license', 'driver licence', 'valid upto', 'vehicle class', 'dl no', 'dl number', 'license number', 'driver', 'non transport', 'transport', 'exp.', 'regional transport']):
             return 0.0
         
+        # Strong reject if voter ID keywords are present
+        if any(keyword in text_lower for keyword in ['voter id', 'election commission', 'epic', 'voter card', 'elector', 'electoral', 'voter slip', 'chief electoral']):
+            return 0.0
+        
         # Check for 12-digit Aadhar number (but reduce weight since many docs have 12-digit numbers)
         if re.search(r'\d{4}\s?\d{4}\s?\d{4}', text):
             score += 0.2
@@ -196,6 +206,10 @@ class DocumentValidator:
         """Check for Passport document characteristics"""
         score = 0.0
         
+        # Strong reject if voter ID keywords are present
+        if any(keyword in text_lower for keyword in ['voter id', 'election commission', 'epic', 'voter card', 'elector', 'electoral']):
+            return 0.0
+        
         # Check for passport number format - HIGH WEIGHT
         if re.search(r'\b[A-Z]\d{7}\b', text):
             score += 0.4
@@ -210,7 +224,7 @@ class DocumentValidator:
             score += 0.15
         
         # Penalize if other document keywords are present
-        if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'pan', 'voter id']):
+        if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'pan']):
             score *= 0.6
         
         return min(score, 1.0)
@@ -242,13 +256,23 @@ class DocumentValidator:
         """Check for Voter ID document characteristics"""
         score = 0.0
         
-        # Check for voter ID keywords
-        matches = sum(1 for pattern in self.voter_id_patterns if re.search(pattern, text_lower))
-        score += min(matches * 0.25, 0.8)
+        # Check for strong voter ID keywords - HIGH WEIGHT
+        strong_keywords = ['voter id', 'election commission', 'epic']
+        strong_matches = sum(1 for keyword in strong_keywords if keyword in text_lower)
+        score += min(strong_matches * 0.4, 0.7)
         
-        # Check for common voter ID fields
-        if any(keyword in text_lower for keyword in ['epic', 'election', 'constituency']):
-            score += 0.2
+        # Check for voter ID patterns
+        matches = sum(1 for pattern in self.voter_id_patterns if re.search(pattern, text_lower))
+        score += min(matches * 0.15, 0.5)
+        
+        # Check for common voter ID fields - VERY HIGH WEIGHT
+        voter_fields = ['epic', 'election', 'constituency', 'electoral', 'voter slip', 'elector', 'chief electoral']
+        field_matches = sum(1 for field in voter_fields if field in text_lower)
+        score += min(field_matches * 0.2, 0.5)
+        
+        # Check for voter ID number pattern (10-12 alphanumeric)
+        if re.search(r'\b[A-Z0-9]{10,12}\b', text):
+            score += 0.1
         
         return min(score, 1.0)
     

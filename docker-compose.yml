@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      - KEYCLOAK_USER=admin
+      - KEYCLOAK_PASSWORD=admin
+    ports:
+      - "8080:8080"
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    ports:
+      - "8000:8000"
+
+  orchestration-service:
+    build:
+      context: ./orchestration-service
+    ports:
+      - "8010:8010"
+
+  extract-agent:
+    build:
+      context: ./agents/extract-agent
+    ports:
+      - "8001:8001"
+
+  verify-agent:
+    build:
+      context: ./agents/verify-agent
+    ports:
+      - "8002:8002"
+
+  reason-agent:
+    build:
+      context: ./agents/reason-agent
+    ports:
+      - "8003:8003"
+
+  risk-agent:
+    build:
+      context: ./agents/risk-agent
+    ports:
+      - "8004:8004"
+
+  decision-agent:
+    build:
+      context: ./agents/decision-agent
+    ports:
+      - "8005:8005"
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
