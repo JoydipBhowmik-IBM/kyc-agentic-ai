@@ -150,35 +150,45 @@ class DocumentValidator:
         """Check for Aadhar document characteristics"""
         score = 0.0
         
-        # Check for 12-digit Aadhar number
+        # Check for 12-digit Aadhar number (but reduce weight since many docs have 12-digit numbers)
         if re.search(r'\d{4}\s?\d{4}\s?\d{4}', text):
-            score += 0.4
-        
-        # Check for keywords
-        matches = sum(1 for pattern in self.aadhar_patterns if re.search(pattern, text_lower))
-        score += min(matches * 0.15, 0.6)
-        
+            score += 0.2
+
+        # Check for specific Aadhar keywords - HIGHER WEIGHT
+        aadhar_keywords = ['aadhar', 'aadhaar', 'uid', 'unique id']
+        matches = sum(1 for keyword in aadhar_keywords if keyword in text_lower)
+        score += min(matches * 0.25, 0.5)
+
         # Check for common Aadhar fields
-        if any(keyword in text_lower for keyword in ['nfsa', 'father', 'dob', 'date of birth']):
+        if any(keyword in text_lower for keyword in ['nfsa', 'father', 'dob', 'date of birth', 'government of india']):
             score += 0.2
         
+        # Penalize if driving license keywords are present
+        if any(keyword in text_lower for keyword in ['driving license', 'driving licence', 'valid upto', 'vehicle class']):
+            score *= 0.5
+
         return min(score, 1.0)
     
     def _check_pan(self, text: str, text_lower: str, text_normalized: str) -> float:
         """Check for PAN document characteristics"""
         score = 0.0
         
-        # Check for PAN format XXXXX0000X
+        # Check for PAN format XXXXX0000X - HIGH WEIGHT
         if re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text):
             score += 0.5
         
-        # Check for PAN keywords
-        matches = sum(1 for pattern in self.pan_patterns if re.search(pattern, text_lower))
-        score += min(matches * 0.15, 0.5)
+        # Check for PAN keywords - HIGHER WEIGHT
+        pan_keywords = ['pan card', 'pan number', 'permanent account number', 'income tax']
+        matches = sum(1 for keyword in pan_keywords if keyword in text_lower)
+        score += min(matches * 0.2, 0.4)
         
         # Check for common PAN fields
-        if any(keyword in text_lower for keyword in ['income tax', 'dob', 'father']):
-            score += 0.15
+        if any(keyword in text_lower for keyword in ['date of birth', 'father', 'name', 'assessement year']):
+            score += 0.1
+        
+        # Penalize if other document keywords are present
+        if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'passport', 'voter id']):
+            score *= 0.6
         
         return min(score, 1.0)
     
@@ -186,17 +196,22 @@ class DocumentValidator:
         """Check for Passport document characteristics"""
         score = 0.0
         
-        # Check for passport number format
+        # Check for passport number format - HIGH WEIGHT
         if re.search(r'\b[A-Z]\d{7}\b', text):
             score += 0.4
         
-        # Check for passport keywords
-        matches = sum(1 for pattern in self.passport_patterns if re.search(pattern, text_lower))
-        score += min(matches * 0.15, 0.6)
+        # Check for passport keywords - HIGHER WEIGHT
+        passport_keywords = ['passport', 'passport number', 'machine readable zone', 'republic of india']
+        matches = sum(1 for keyword in passport_keywords if keyword in text_lower)
+        score += min(matches * 0.2, 0.5)
         
         # Check for common passport fields
-        if any(keyword in text_lower for keyword in ['issued', 'valid', 'republic of india', 'mrz']):
-            score += 0.2
+        if any(keyword in text_lower for keyword in ['issued', 'valid', 'date of issue', 'date of expiry']):
+            score += 0.15
+        
+        # Penalize if other document keywords are present
+        if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'pan', 'voter id']):
+            score *= 0.6
         
         return min(score, 1.0)
     
@@ -204,13 +219,22 @@ class DocumentValidator:
         """Check for Driving License document characteristics"""
         score = 0.0
         
-        # Check for DL patterns
-        matches = sum(1 for pattern in self.driving_license_patterns if re.search(pattern, text_lower))
-        score += min(matches * 0.2, 0.7)
+        # Check for explicit DL keywords - HIGH WEIGHT
+        dl_keywords = ['driving license', 'driving licence', 'dl no', 'dl number', 'license number']
+        matches = sum(1 for keyword in dl_keywords if keyword in text_lower)
+        score += min(matches * 0.3, 0.7)
         
-        # Check for common DL fields
-        if any(keyword in text_lower for keyword in ['valid upto', 'date of expiry', 'vehicle class']):
+        # Check for common DL-specific fields - HIGH WEIGHT
+        if any(keyword in text_lower for keyword in ['valid upto', 'date of expiry', 'validity', 'vehicle class', 'class of vehicle', 'non transport', 'transport']):
+            score += 0.4
+        
+        # Check for DL number patterns (MH01/98AB1234 or similar)
+        if re.search(r'[A-Z]{2}\d{2}/?\d{2}[A-Z]{2}\d{4}', text):
             score += 0.3
+        
+        # Check for common DL issuing authority
+        if any(keyword in text_lower for keyword in ['regional transport office', 'rto', 'issued by']):
+            score += 0.1
         
         return min(score, 1.0)
     
