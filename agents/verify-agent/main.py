@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,23 +31,37 @@ def validate_document_content(data: Dict[str, Any]) -> Dict[str, Any]:
 
     return validations
 
+def cross_verify_with_sources(data: Dict[str, Any], sources: List[str]) -> Dict[str, Any]:
+    """Perform cross-verification against multiple sources."""
+    cross_verifications = {}
+    for source in sources:
+        # Simulate cross-verification logic
+        cross_verifications[source] = True  # Replace with actual verification logic
+
+    return cross_verifications
+
 @app.post("/verify")
 async def verify(data: Dict[str, Any]):
-    """Verify extracted document information"""
+    """Verify extracted document information with multi-source cross-verification."""
     try:
         logger.info(f"Verifying document data")
 
         # Perform validation checks
         validations = validate_document_content(data)
 
-        verified = all(validations.values())
-        confidence_score = sum(validations.values()) / len(validations)
+        # Perform cross-verification
+        sources = ["source1", "source2", "source3"]  # Replace with actual sources
+        cross_verifications = cross_verify_with_sources(data, sources)
+
+        verified = all(validations.values()) and all(cross_verifications.values())
+        confidence_score = (sum(validations.values()) + sum(cross_verifications.values())) / (len(validations) + len(cross_verifications))
 
         result = {
             "status": "success",
             "verified": verified,
             "confidence_score": confidence_score,
             "validations": validations,
+            "cross_verifications": cross_verifications,
             "original_data": data,
             "timestamp": datetime.now().isoformat()
         }

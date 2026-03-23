@@ -250,6 +250,35 @@ class DecisionEngine:
             lines.append("⚠️ Human Review Required")
         
         return "\n".join(lines)
+    
+    def explain_decision(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate an explainable decision based on analysis."""
+        risk_metrics = analysis.get("risk_metrics", {})
+        risk_score = risk_metrics.get("score", 0.5)
+        verified = risk_metrics.get("verified", False)
+
+        if not verified:
+            decision = self.DECISION_RULES["verification_failed"]
+        elif risk_score >= HIGH_RISK_THRESHOLD:
+            decision = self.DECISION_RULES["critical_risk"]
+        elif risk_score >= MEDIUM_HIGH_THRESHOLD:
+            decision = self.DECISION_RULES["high_risk"]
+        elif risk_score >= MEDIUM_RISK_THRESHOLD:
+            decision = self.DECISION_RULES["medium_risk"]
+        elif risk_score >= LOW_RISK_THRESHOLD:
+            decision = self.DECISION_RULES["low_risk"]
+        else:
+            decision = self.DECISION_RULES["very_low_risk"]
+
+        explanation = {
+            "decision": decision["decision"],
+            "reason": decision["reason"],
+            "confidence_factor": decision["confidence_factor"],
+            "regulatory_action": decision["regulatory_action"],
+            "risk_analysis": analysis
+        }
+
+        return explanation
 
 # Global decision engine
 decision_engine = DecisionEngine()
@@ -410,4 +439,3 @@ if __name__ == "__main__":
     import uvicorn
     import os
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
