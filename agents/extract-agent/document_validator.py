@@ -150,6 +150,10 @@ class DocumentValidator:
         """Check for Aadhar document characteristics"""
         score = 0.0
         
+        # Strong reject if driving license keywords are present
+        if any(keyword in text_lower for keyword in ['driving license', 'driving licence', 'driver license', 'driver licence', 'valid upto', 'vehicle class', 'dl no', 'dl number', 'license number', 'driver', 'non transport', 'transport', 'exp.', 'regional transport']):
+            return 0.0
+        
         # Check for 12-digit Aadhar number (but reduce weight since many docs have 12-digit numbers)
         if re.search(r'\d{4}\s?\d{4}\s?\d{4}', text):
             score += 0.2
@@ -162,10 +166,6 @@ class DocumentValidator:
         # Check for common Aadhar fields
         if any(keyword in text_lower for keyword in ['nfsa', 'father', 'dob', 'date of birth', 'government of india']):
             score += 0.2
-        
-        # Penalize if driving license keywords are present
-        if any(keyword in text_lower for keyword in ['driving license', 'driving licence', 'valid upto', 'vehicle class']):
-            score *= 0.5
 
         return min(score, 1.0)
     
@@ -219,21 +219,21 @@ class DocumentValidator:
         """Check for Driving License document characteristics"""
         score = 0.0
         
-        # Check for explicit DL keywords - HIGH WEIGHT
-        dl_keywords = ['driving license', 'driving licence', 'dl no', 'dl number', 'license number']
+        # Check for explicit DL keywords - HIGH WEIGHT (including OCR common terms)
+        dl_keywords = ['driving license', 'driving licence', 'driver license', 'driver licence', 'dl no', 'dl number', 'license number', 'driver', 'non transport', 'transport']
         matches = sum(1 for keyword in dl_keywords if keyword in text_lower)
-        score += min(matches * 0.3, 0.7)
+        score += min(matches * 0.25, 0.8)
         
-        # Check for common DL-specific fields - HIGH WEIGHT
-        if any(keyword in text_lower for keyword in ['valid upto', 'date of expiry', 'validity', 'vehicle class', 'class of vehicle', 'non transport', 'transport']):
-            score += 0.4
+        # Check for common DL-specific fields - VERY HIGH WEIGHT
+        if any(keyword in text_lower for keyword in ['valid upto', 'date of expiry', 'validity', 'vehicle class', 'class of vehicle', 'non transport', 'transport', 'exp.', 'regional transport office']):
+            score += 0.5
         
         # Check for DL number patterns (MH01/98AB1234 or similar)
         if re.search(r'[A-Z]{2}\d{2}/?\d{2}[A-Z]{2}\d{4}', text):
             score += 0.3
         
         # Check for common DL issuing authority
-        if any(keyword in text_lower for keyword in ['regional transport office', 'rto', 'issued by']):
+        if any(keyword in text_lower for keyword in ['regional transport office', 'rto', 'issued by', 'rto']):
             score += 0.1
         
         return min(score, 1.0)
