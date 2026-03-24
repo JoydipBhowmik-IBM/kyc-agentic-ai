@@ -466,6 +466,13 @@ async def perform_multi_step_langchain_analysis(data: Dict[str, Any]) -> Dict[st
         logger.info("✓ Advanced LangChain Analysis Complete")
         logger.info("═════════════════════════════════════════════════════════")
         
+        # CRITICAL: Double-check that is_valid_kyc is preserved
+        if "is_valid_kyc" not in enhanced_analysis and "is_valid_kyc" in data:
+            logger.warning("WARN: is_valid_kyc missing from analysis - adding from input")
+            enhanced_analysis["is_valid_kyc"] = data.get("is_valid_kyc")
+        
+        logger.info(f"Reason Agent Output - is_valid_kyc: {enhanced_analysis.get('is_valid_kyc')} (from input: {data.get('is_valid_kyc')})")
+        
         return enhanced_analysis
         
     except Exception as e:

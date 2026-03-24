@@ -217,13 +217,24 @@ class DecisionEngine:
         """
         
         # Extract is_valid_kyc flag from data
+        # Check multiple possible sources/formats
         is_valid_kyc = data.get("is_valid_kyc", False)
+        
+        # Handle string representations of boolean
+        if isinstance(is_valid_kyc, str):
+            is_valid_kyc = is_valid_kyc.lower() in ('true', '1', 'yes')
+        
+        logger.info(f"Decision making - is_valid_kyc: {is_valid_kyc} (type: {type(is_valid_kyc).__name__})")
         
         # Primary check: If document is NOT a valid KYC type AND not verified, reject
         # But if it IS a valid KYC document type, we proceed with risk-based decision
+        # IMPORTANT: If is_valid_kyc=True, the document passed KYC classification, so we proceed based on risk
         if not verified and not is_valid_kyc:
             rule = self.DECISION_RULES["verification_failed"]
+            logger.warning(f"Rejecting: not verified ({verified}) and not valid KYC ({is_valid_kyc})")
             return self.format_decision(rule, risk_score)
+        elif not verified and is_valid_kyc:
+            logger.info(f"Proceeding with risk-based decision: verified={verified}, is_valid_kyc={is_valid_kyc}, risk_level={risk_level}")
         
         # Map risk level to decision rule
         rule_key = risk_level.lower() if risk_level else "medium_risk"

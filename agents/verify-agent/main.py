@@ -65,6 +65,7 @@ async def verify(data: Dict[str, Any]):
                 "confidence_score": 0.0,
                 "validations": {"is_valid_kyc": False},
                 "cross_verifications": {},
+                "is_valid_kyc": False,  # CRITICAL: Must preserve for decision agent
                 "original_data": data,
                 "timestamp": datetime.now().isoformat()
             }
