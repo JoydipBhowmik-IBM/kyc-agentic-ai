@@ -112,6 +112,7 @@ class DecisionEngine:
         risk_score = data.get("risk_score", 0.5)
         risk_level = data.get("risk_level", "MEDIUM")
         verified = data.get("verified", False)
+        is_valid_kyc = data.get("is_valid_kyc", False)
         
         # Extract intelligence from data
         factors = data.get("intelligence_metrics", {})
@@ -120,12 +121,13 @@ class DecisionEngine:
             "risk_metrics": {
                 "score": risk_score,
                 "level": risk_level,
-                "verified": verified
+                "verified": verified,
+                "is_valid_kyc": is_valid_kyc
             },
             "risk_indicators": self.extract_risk_indicators(data),
             "mitigating_factors": self.extract_mitigating_factors(data),
             "regulatory_concerns": self.extract_regulatory_concerns(data),
-            "overall_risk_assessment": self.assess_overall_risk(risk_score, verified)
+            "overall_risk_assessment": self.assess_overall_risk(risk_score, verified, is_valid_kyc)
         }
         
         return analysis
@@ -155,6 +157,12 @@ class DecisionEngine:
         if data.get("verified", False):
             factors.append("✓ Document verification passed")
         
+        if data.get("is_valid_kyc", False):
+            factors.append("✓ Valid KYC document type identified")
+        
+        if data.get("confidence", 0) >= 0.9:
+            factors.append("✓ High document identification confidence")
+        
         if data.get("confidence_score", 0) > 0.8:
             factors.append("✓ High extraction confidence")
         
@@ -177,8 +185,17 @@ class DecisionEngine:
         
         return concerns
     
-    def assess_overall_risk(self, risk_score: float, verified: bool) -> str:
+    def assess_overall_risk(self, risk_score: float, verified: bool, is_valid_kyc: bool = False) -> str:
         """Provide overall risk assessment"""
+        # If it's a valid KYC document that passed verification, risk is reduced
+        if is_valid_kyc and verified:
+            if risk_score < 0.2:
+                return "MINIMAL RISK - Valid KYC document with low regulatory concern"
+            elif risk_score < 0.33:
+                return "LOW RISK - Valid KYC document, standard controls sufficient"
+            elif risk_score < 0.5:
+                return "LOW-MEDIUM RISK - Valid KYC document, enhanced controls recommended"
+        
         if not verified:
             return "UNVERIFIED - Cannot proceed"
         elif risk_score < 0.2:
@@ -199,8 +216,12 @@ class DecisionEngine:
         Make final KYC decision based on comprehensive analysis
         """
         
-        # Primary check: Verification status
-        if not verified:
+        # Extract is_valid_kyc flag from data
+        is_valid_kyc = data.get("is_valid_kyc", False)
+        
+        # Primary check: If document is NOT a valid KYC type AND not verified, reject
+        # But if it IS a valid KYC document type, we proceed with risk-based decision
+        if not verified and not is_valid_kyc:
             rule = self.DECISION_RULES["verification_failed"]
             return self.format_decision(rule, risk_score)
         
@@ -256,8 +277,11 @@ class DecisionEngine:
         risk_metrics = analysis.get("risk_metrics", {})
         risk_score = risk_metrics.get("score", 0.5)
         verified = risk_metrics.get("verified", False)
+        is_valid_kyc = risk_metrics.get("is_valid_kyc", False)
 
-        if not verified:
+        # If document is NOT a valid KYC type AND not verified, reject
+        # But if it IS valid KYC, use risk-based decision
+        if not verified and not is_valid_kyc:
             decision = self.DECISION_RULES["verification_failed"]
         elif risk_score >= HIGH_RISK_THRESHOLD:
             decision = self.DECISION_RULES["critical_risk"]
@@ -301,13 +325,20 @@ async def decision(data: Dict[str, Any]):
         risk_score = data.get("risk_score", 0.5)
         risk_level = data.get("risk_level", "MEDIUM")
         verified = data.get("verified", False)
+        is_valid_kyc = data.get("is_valid_kyc", False)
         
-        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}")
+        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}, is_valid_kyc: {is_valid_kyc}")
         
         # Log all data keys for debugging
         logger.info(f"All input data keys: {list(data.keys())}")
-        if not verified:
-            logger.warning("⚠️  WARNING: verified field is False or missing - this may result in REJECTED decision")
+        
+        # IMPORTANT: If extract agent identified this as a valid KYC document but verify agent couldn't verify,
+        # we should still allow it to proceed with caution (not auto-reject)
+        if not verified and is_valid_kyc:
+            logger.info("Document is valid KYC type but verification incomplete - will be reviewed based on risk score")
+        
+        if not verified and not is_valid_kyc:
+            logger.warning("⚠️  WARNING: Document failed KYC validation - will be rejected")
         
         # Perform comprehensive risk analysis
         risk_analysis = decision_engine.analyze_risk_factors(data)
