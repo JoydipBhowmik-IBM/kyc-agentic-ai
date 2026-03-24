@@ -365,13 +365,26 @@ async def decision(data: Dict[str, Any]):
         # Generate explanation
         explanation = decision_engine.generate_decision_explanation(data, decision_result)
         
+        # Extract document identification confidence from extract agent
+        document_identification_confidence = data.get("confidence", 0.0)
+        
         # Build comprehensive result
         result = {
             "status": "success",
             "decision": decision_result["decision"],
             "reason": decision_result["reason"],
+            
+            # CLARITY: Separate decision confidence from document confidence
+            "confidence_scores": {
+                "decision_confidence": round(decision_result["confidence"], 3),
+                "document_identification_confidence": round(document_identification_confidence, 3),
+                "risk_adjusted_confidence": round(decision_result["risk_adjusted_confidence"], 3)
+            },
+            
+            # For backward compatibility, include main confidence
             "confidence": round(decision_result["confidence"], 3),
-            "risk_adjusted_confidence": round(decision_result["risk_adjusted_confidence"], 3),
+            "document_confidence": round(document_identification_confidence, 3),
+            
             "regulatory_action": decision_result["regulatory_action"],
             "requires_human_review": decision_result["requires_human_review"],
             
@@ -393,7 +406,8 @@ async def decision(data: Dict[str, Any]):
                 "risk_score": risk_score,
                 "risk_level": risk_level,
                 "verified": verified,
-                "confidence_score": data.get("confidence_score", 0.0)
+                "extraction_confidence_score": data.get("confidence_score", 0.0),
+                "document_identification_confidence": document_identification_confidence
             },
             
             "decision_version": "2.0.0 (Advanced)",
@@ -403,18 +417,23 @@ async def decision(data: Dict[str, Any]):
         # Preserve critical KYC document type information from previous agents
         if "document_type" in data:
             result["document_type"] = data.get("document_type")
-        if "confidence" in data:
-            result["confidence"] = data.get("confidence")
         if "is_valid_kyc" in data:
             result["is_valid_kyc"] = data.get("is_valid_kyc")
+            logger.info(f"Document is valid KYC: {result['is_valid_kyc']}")
         if "all_scores" in data:
             result["all_scores"] = data.get("all_scores")
         if "reason" in data:
-            result["reason"] = data.get("reason")
+            result["reason_from_extract"] = data.get("reason")
         if "filename" in data:
             result["filename"] = data.get("filename")
         
         logger.info(f"✓ Decision: {result['decision']} | Confidence: {result['confidence']:.1%}")
+        logger.info(f"Document Identification Confidence: {document_identification_confidence:.1%}")
+        logger.info(f"Document Type: {result.get('document_type', 'Unknown')}")
+        logger.info(f"Is Valid KYC: {result.get('is_valid_kyc', False)}")
+        logger.info(f"Risk Score: {risk_score}")
+        logger.info(f"Verified: {verified}")
+        logger.info(f"Confidence Breakdown: Decision={result['confidence']:.1%}, DocID={document_identification_confidence:.1%}, RiskAdj={result['confidence_scores']['risk_adjusted_confidence']:.1%}")
         logger.info(f"Final result keys being returned: {list(result.keys())}")
         
         return result
