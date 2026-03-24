@@ -1,60 +1,218 @@
 version: '3.8'
 
+networks:
+  kyc-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  keycloak_data:
+
 services:
+  # PostgreSQL Database for Keycloak
+  postgres:
+    image: postgres:15-alpine
+    container_name: kyc-postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak Identity Management
   keycloak:
     image: quay.io/keycloak/keycloak:latest
+    container_name: kyc-keycloak
     environment:
-      - KEYCLOAK_USER=admin
-      - KEYCLOAK_PASSWORD=admin
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak123
+      KC_PROXY: edge
+      KC_LOG_LEVEL: INFO
     ports:
       - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # API Gateway - Entry point for all requests
   api-gateway:
     build:
       context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: kyc-api-gateway
     ports:
       - "8000:8000"
     environment:
-      - ORCHESTRATION_SERVICE_URL=http://orchestration-service:8010
+      ORCHESTRATION_SERVICE_URL: http://orchestration-service:8010
+      LOG_LEVEL: INFO
+    depends_on:
+      - orchestration-service
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Orchestration Service - Coordinates all agents
   orchestration-service:
     build:
       context: ./orchestration-service
+      dockerfile: Dockerfile
+    container_name: kyc-orchestration
     ports:
       - "8010:8010"
+    environment:
+      PORT: 8010
+      EXTRACT_AGENT_URL: http://extract-agent:8000
+      VERIFY_AGENT_URL: http://verify-agent:8000
+      REASON_AGENT_URL: http://reason-agent:8000
+      RISK_AGENT_URL: http://risk-agent:8000
+      DECISION_AGENT_URL: http://decision-agent:8000
+      LOG_LEVEL: INFO
+    depends_on:
+      - extract-agent
+      - verify-agent
+      - reason-agent
+      - risk-agent
+      - decision-agent
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Extract Agent - Extracts information from documents
   extract-agent:
     build:
       context: ./agents/extract-agent
+      dockerfile: Dockerfile
+    container_name: kyc-extract-agent
     ports:
-      - "8001:8001"
+      - "8001:8000"
+    environment:
+      LOG_LEVEL: INFO
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Verify Agent - Verifies extracted information
   verify-agent:
     build:
       context: ./agents/verify-agent
+      dockerfile: Dockerfile
+    container_name: kyc-verify-agent
     ports:
-      - "8002:8002"
+      - "8002:8000"
+    environment:
+      LOG_LEVEL: INFO
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Reason Agent - Performs reasoning on extracted data
   reason-agent:
     build:
       context: ./agents/reason-agent
+      dockerfile: Dockerfile
+    container_name: kyc-reason-agent
     ports:
-      - "8003:8003"
+      - "8003:8000"
+    environment:
+      LOG_LEVEL: INFO
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Risk Agent - Assesses risk levels
   risk-agent:
     build:
       context: ./agents/risk-agent
+      dockerfile: Dockerfile
+    container_name: kyc-risk-agent
     ports:
-      - "8004:8004"
+      - "8004:8000"
+    environment:
+      LOG_LEVEL: INFO
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Decision Agent - Makes final decisions
   decision-agent:
     build:
       context: ./agents/decision-agent
+      dockerfile: Dockerfile
+    container_name: kyc-decision-agent
     ports:
-      - "8005:8005"
+      - "8005:8000"
+    environment:
+      LOG_LEVEL: INFO
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
+  # Frontend - React/Node.js UI
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kyc-frontend
     ports:
       - "3000:3000"
+    environment:
+      API_GATEWAY_URL: http://localhost:8000
+      NODE_ENV: production
+    depends_on:
+      - api-gateway
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3

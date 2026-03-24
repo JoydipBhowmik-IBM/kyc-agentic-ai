@@ -135,7 +135,12 @@ class DocumentValidator:
             KYCDocumentType.UTILITY_BILL,
         ]
         
-        is_valid = best_type in kyc_document_types and best_score > 0.3
+        # Special handling for PAN documents - they're primary KYC documents
+        # Use lower threshold (0.25) for PAN since it's a critical document
+        if best_type == KYCDocumentType.PAN:
+            is_valid = best_score > 0.25
+        else:
+            is_valid = best_type in kyc_document_types and best_score > 0.3
         
         # If score is very low, mark as Unknown instead of a specific type
         if best_score < 0.1:
@@ -183,22 +188,33 @@ class DocumentValidator:
         """Check for PAN document characteristics"""
         score = 0.0
         
-        # Check for PAN format XXXXX0000X - HIGH WEIGHT
-        if re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text):
-            score += 0.5
+        # Check for PAN format XXXXX0000X - VERY HIGH WEIGHT
+        # Also support formats with spaces or special chars that OCR might introduce
+        pan_formats = [
+            re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text),  # Standard format
+            re.search(r'[A-Z]{5}\s*[0-9]{4}\s*[A-Z]{1}', text),  # With spaces
+            re.search(r'[A-Z]{5}[^A-Z0-9]*[0-9]{4}[^A-Z0-9]*[A-Z]{1}', text),  # With any separators
+        ]
         
-        # Check for PAN keywords - HIGHER WEIGHT
-        pan_keywords = ['pan card', 'pan number', 'permanent account number', 'income tax']
+        if any(pan_formats):
+            score += 0.6  # Increased weight for PAN format
+        
+        # Check for PAN keywords - HIGH WEIGHT
+        pan_keywords = ['pan card', 'pan number', 'permanent account number', 'income tax', 'pan', 'income tax department']
         matches = sum(1 for keyword in pan_keywords if keyword in text_lower)
-        score += min(matches * 0.2, 0.4)
+        score += min(matches * 0.25, 0.5)
         
         # Check for common PAN fields
-        if any(keyword in text_lower for keyword in ['date of birth', 'father', 'name', 'assessement year']):
-            score += 0.1
+        if any(keyword in text_lower for keyword in ['date of birth', 'father', 'name', 'assessement year', 'dob']):
+            score += 0.15
         
-        # Penalize if other document keywords are present
+        # Check for presence of actual income tax document indicators
+        if any(keyword in text_lower for keyword in ['income tax', 'income tax department', 'government of india']):
+            score += 0.2
+        
+        # Slight penalize if other document keywords are present (but don't kill the score)
         if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'passport', 'voter id']):
-            score *= 0.6
+            score *= 0.8  # Reduced penalty
         
         return min(score, 1.0)
     
@@ -321,6 +337,12 @@ class DocumentValidator:
     def _extract_key_patterns(self, text: str, doc_type: KYCDocumentType) -> Dict:
         """Extract key patterns found in the document"""
         patterns = {}
+        
+        # Extract PAN number specifically if PAN document
+        if doc_type == KYCDocumentType.PAN:
+            pan_matches = re.findall(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text)
+            if pan_matches:
+                patterns['pan_number'] = pan_matches[0]
         
         # Extract numbers
         numbers = re.findall(r'\b\d{4,12}\b', text)
