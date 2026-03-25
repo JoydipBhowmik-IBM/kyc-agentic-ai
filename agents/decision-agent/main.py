@@ -199,10 +199,24 @@ class DecisionEngine:
         Make final KYC decision based on comprehensive analysis
         """
         
-        # Primary check: Verification status
+        # Get confidence score with fallback for field name variations
+        confidence_score = data.get("confidence_score", 0.0)
+        if confidence_score == 0.0:
+            confidence_score = data.get("confidence", 0.0)
+        
+        logger.info(f"make_decision - verified: {verified}, confidence_score: {confidence_score:.2%}")
+        
+        # Primary check: Verification status WITH confidence override
+        # If confidence is high (>=0.8), allow conditional approval even if verification failed on minor check
         if not verified:
-            rule = self.DECISION_RULES["verification_failed"]
-            return self.format_decision(rule, risk_score)
+            if confidence_score >= 0.8:
+                logger.info(f"Verification failed but confidence is high ({confidence_score:.2%}), allowing conditional review")
+                rule = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
+                return self.format_decision(rule, risk_score)
+            else:
+                logger.warning(f"Verification failed and confidence is low ({confidence_score:.2%}), rejecting")
+                rule = self.DECISION_RULES["verification_failed"]
+                return self.format_decision(rule, risk_score)
         
         # Map risk level to decision rule
         rule_key = risk_level.lower() if risk_level else "medium_risk"
@@ -256,9 +270,18 @@ class DecisionEngine:
         risk_metrics = analysis.get("risk_metrics", {})
         risk_score = risk_metrics.get("score", 0.5)
         verified = risk_metrics.get("verified", False)
+        
+        # Get confidence score with fallback
+        confidence_score = risk_metrics.get("confidence_score", 0.0)
+        if confidence_score == 0.0:
+            confidence_score = risk_metrics.get("confidence", 0.0)
 
+        # Handle verification with confidence override
         if not verified:
-            decision = self.DECISION_RULES["verification_failed"]
+            if confidence_score >= 0.8:
+                decision = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
+            else:
+                decision = self.DECISION_RULES["verification_failed"]
         elif risk_score >= HIGH_RISK_THRESHOLD:
             decision = self.DECISION_RULES["critical_risk"]
         elif risk_score >= MEDIUM_HIGH_THRESHOLD:
@@ -302,12 +325,19 @@ async def decision(data: Dict[str, Any]):
         risk_level = data.get("risk_level", "MEDIUM")
         verified = data.get("verified", False)
         
-        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}")
+        # Handle both "confidence" and "confidence_score" field names
+        confidence_score = data.get("confidence_score", 0.0)
+        if confidence_score == 0.0:
+            # Fallback: check if "confidence" field exists
+            confidence_score = data.get("confidence", 0.0)
+        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}, confidence_score: {confidence_score:.2%}")
         
         # Log all data keys for debugging
         logger.info(f"All input data keys: {list(data.keys())}")
         if not verified:
-            logger.warning("⚠️  WARNING: verified field is False or missing - this may result in REJECTED decision")
+            logger.warning(f"⚠️  WARNING: verified field is False - confidence_score is {confidence_score:.2%}")
+            if confidence_score >= 0.8:
+                logger.info("✓ Confidence override will be applied (confidence >= 80%)")
         
         # Perform comprehensive risk analysis
         risk_analysis = decision_engine.analyze_risk_factors(data)

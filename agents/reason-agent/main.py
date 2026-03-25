@@ -466,6 +466,14 @@ async def perform_multi_step_langchain_analysis(data: Dict[str, Any]) -> Dict[st
         logger.info("✓ Advanced LangChain Analysis Complete")
         logger.info("═════════════════════════════════════════════════════════")
         
+        # CRITICAL: Explicitly preserve verification and confidence for downstream agents
+        # These fields must flow through the entire pipeline to decision-agent
+        enhanced_analysis["verified"] = data.get("verified", False)
+        enhanced_analysis["confidence_score"] = data.get("confidence_score", 0.0)
+        enhanced_analysis["validations"] = data.get("validations", {})
+        
+        logger.info(f"Preserved fields - verified: {enhanced_analysis.get('verified')}, confidence_score: {enhanced_analysis.get('confidence_score'):.2%}")
+        
         return enhanced_analysis
         
     except Exception as e:
@@ -502,9 +510,22 @@ async def reason(data: Dict[str, Any]):
     """
     try:
         logger.info(f"Received reasoning request for analysis")
+        logger.info(f"Reason-agent input - verified: {data.get('verified')}, confidence_score: {data.get('confidence_score')}")
+        
+        # CRITICAL: Save verification fields BEFORE LLM processing
+        saved_verified = data.get("verified", False)
+        saved_confidence_score = data.get("confidence_score", 0.0)
+        saved_validations = data.get("validations", {})
         
         # Use advanced LangChain analysis
         result = await perform_multi_step_langchain_analysis(data)
+        
+        # CRITICAL: Restore verification fields AFTER LLM processing  
+        result["verified"] = saved_verified
+        result["confidence_score"] = saved_confidence_score
+        result["validations"] = saved_validations
+        
+        logger.info(f"Reason-agent output - verified: {result.get('verified')}, confidence_score: {result.get('confidence_score')}")
         
         return result
 
