@@ -21,22 +21,20 @@ app.get('/health', (req, res) => {
     res.json({ status: 'healthy', service: 'frontend' });
 });
 
-// Serve enhanced index_with_steps.html for root route (SPA support)
+// Serve index.html for root route (SPA support)
 // This MUST be before the static middleware to intercept / requests
 app.get('/', (req, res) => {
-    // Always serve the enhanced version with processing steps
-    const enhancedPath = path.join(__dirname, 'index_with_steps.html');
-    const defaultPath = path.join(__dirname, 'index.html');
+    const indexPath = path.join(__dirname, 'index.html');
     
     console.log('Serving root route...');
-    console.log('Enhanced path exists:', fs.existsSync(enhancedPath));
+    console.log('Index path exists:', fs.existsSync(indexPath));
     
-    if (fs.existsSync(enhancedPath)) {
-        console.log('✓ Serving index_with_steps.html');
-        res.sendFile(enhancedPath);
+    if (fs.existsSync(indexPath)) {
+        console.log('✓ Serving index.html');
+        res.sendFile(indexPath);
     } else {
-        console.log('✗ Falling back to index.html');
-        res.sendFile(defaultPath);
+        console.log('✗ index.html not found');
+        res.status(404).send('index.html not found');
     }
 });
 

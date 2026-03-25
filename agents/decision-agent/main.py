@@ -219,12 +219,36 @@ class DecisionEngine:
         # Extract is_valid_kyc flag from data
         # Check multiple possible sources/formats
         is_valid_kyc = data.get("is_valid_kyc", False)
+        document_type = data.get("document_type", "Unknown")
+        document_confidence = data.get("confidence", 0.0)
         
         # Handle string representations of boolean
         if isinstance(is_valid_kyc, str):
             is_valid_kyc = is_valid_kyc.lower() in ('true', '1', 'yes')
         
-        logger.info(f"Decision making - is_valid_kyc: {is_valid_kyc} (type: {type(is_valid_kyc).__name__})")
+        logger.info(f"Decision making - is_valid_kyc: {is_valid_kyc} (type: {type(is_valid_kyc).__name__}), document_type: {document_type}, confidence: {document_confidence}")
+        
+        # VALID KYC DOCUMENT TYPES
+        valid_kyc_types = ['PAN', 'Aadhar', 'Passport', 'Driving License', 'Voter ID', 'Bank Statement', 'Utility Bill']
+        
+        # ═════════════════════════════════════════════════════════════
+        # CRITICAL FIX: If document is a valid KYC type with high confidence, APPROVE
+        # ═════════════════════════════════════════════════════════════
+        if document_type in valid_kyc_types and document_confidence >= 0.99:
+            logger.info(f"✅ AUTO-APPROVING: {document_type} with {document_confidence*100:.1f}% confidence")
+            rule = {
+                "decision": "APPROVED",
+                "reason": f"Valid KYC document ({document_type}) identified with {document_confidence*100:.1f}% confidence",
+                "confidence_factor": document_confidence,
+                "regulatory_action": "APPROVE"
+            }
+            return self.format_decision(rule, risk_score)
+        
+        # CRITICAL: Explicit rejection for Unknown document types
+        if document_type == "Unknown" or document_type == "Invalid":
+            rule = self.DECISION_RULES["verification_failed"]
+            logger.warning(f"🚫 REJECTING: Document type is '{document_type}' - cannot process unknown document types")
+            return self.format_decision(rule, risk_score)
         
         # Primary check: If document is NOT a valid KYC type AND not verified, reject
         # But if it IS a valid KYC document type, we proceed with risk-based decision
@@ -289,10 +313,18 @@ class DecisionEngine:
         risk_score = risk_metrics.get("score", 0.5)
         verified = risk_metrics.get("verified", False)
         is_valid_kyc = risk_metrics.get("is_valid_kyc", False)
+        document_type = risk_metrics.get("document_type", "Unknown")
 
+        # CRITICAL: Explicit rejection for Unknown document types
+        if document_type == "Unknown" or document_type == "Invalid":
+            decision = {
+                "decision": "REJECTED",
+                "reason": f"Document type is '{document_type}' - cannot process unknown document types",
+                "confidence_factor": 1.0,
+                "regulatory_action": "REJECT"
+            }
         # If document is NOT a valid KYC type AND not verified, reject
-        # But if it IS valid KYC, use risk-based decision
-        if not verified and not is_valid_kyc:
+        elif not verified and not is_valid_kyc:
             decision = self.DECISION_RULES["verification_failed"]
         elif risk_score >= HIGH_RISK_THRESHOLD:
             decision = self.DECISION_RULES["critical_risk"]
@@ -337,8 +369,116 @@ async def decision(data: Dict[str, Any]):
         risk_level = data.get("risk_level", "MEDIUM")
         verified = data.get("verified", False)
         is_valid_kyc = data.get("is_valid_kyc", False)
+        document_type = data.get("document_type", "Unknown")
+        document_confidence = data.get("confidence", 0.0)
         
-        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}, is_valid_kyc: {is_valid_kyc}")
+        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}, is_valid_kyc: {is_valid_kyc}, document_type: {document_type}, confidence: {document_confidence}")
+        
+        # VALID KYC DOCUMENT TYPES (from extract-agent)
+        valid_kyc_types = ['PAN', 'Aadhar', 'Passport', 'Driving License', 'Voter ID', 'Bank Statement', 'Utility Bill']
+        
+        # ═════════════════════════════════════════════════════════════
+        # CRITICAL LOGIC: Handle document identification
+        # ═════════════════════════════════════════════════════════════
+        
+        # Case 1: Document is identified as a VALID KYC type with high confidence (100%)
+        # APPROVE immediately - do not reject
+        if document_type in valid_kyc_types and document_confidence >= 0.99:
+            logger.info(f"✅ APPROVING: Document identified as '{document_type}' with {document_confidence*100:.1f}% confidence")
+            approval_result = {
+                "status": "success",
+                "decision": "APPROVED",
+                "reason": f"Valid KYC document identified as {document_type} with {document_confidence*100:.1f}% confidence. Document meets KYC requirements.",
+                
+                "confidence_scores": {
+                    "decision_confidence": document_confidence,
+                    "document_identification_confidence": document_confidence,
+                    "risk_adjusted_confidence": max(0.0, document_confidence - (risk_score * 0.1))
+                },
+                
+                "confidence": document_confidence,
+                "document_confidence": document_confidence,
+                
+                "regulatory_action": "APPROVE",
+                "requires_human_review": False,
+                
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "document_type": document_type,
+                "is_valid_kyc": True,
+                
+                "analysis": {
+                    "risk_factors_summary": [],
+                    "mitigating_factors": [f"✓ Valid {document_type} identified with {document_confidence*100:.1f}% confidence"],
+                    "regulatory_concerns": [],
+                    "overall_assessment": f"APPROVAL - {document_type} is a valid KYC document with high confidence identification"
+                },
+                
+                "input_metrics": {
+                    "risk_score": risk_score,
+                    "risk_level": risk_level,
+                    "verified": verified,
+                    "extraction_confidence_score": data.get("confidence_score", 0.0),
+                    "document_identification_confidence": document_confidence
+                }
+            }
+            return approval_result
+        
+        # Case 2: Document type is truly Unknown or Invalid - REJECT
+        # CRITICAL FIX: Explicit rejection for Unknown document types
+        if document_type == "Unknown" or document_type == "Invalid":
+            logger.warning(f"🚫 CRITICAL: Document identified as '{document_type}' - MUST BE REJECTED")
+            rejection_result = {
+                "status": "success",
+                "decision": "REJECTED",
+                "reason": f"Document type is '{document_type}' - cannot process unknown or invalid documents. Please submit a valid KYC document (PAN, Aadhar, Passport, Driving License, Voter ID, Bank Statement, or Utility Bill).",
+                
+                "confidence_scores": {
+                    "decision_confidence": 1.0,
+                    "document_identification_confidence": document_confidence,
+                    "risk_adjusted_confidence": 1.0
+                },
+                
+                "confidence": 1.0,
+                "document_confidence": document_confidence,
+                
+                "regulatory_action": "REJECT",
+                "requires_human_review": False,
+                
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "document_type": document_type,
+                "is_valid_kyc": False,
+                
+                "analysis": {
+                    "risk_factors_summary": ["Unknown/Invalid document type - cannot verify"],
+                    "mitigating_factors": [],
+                    "regulatory_concerns": ["Document type not recognized - rejected for compliance"],
+                    "overall_assessment": f"REJECTION - Document type '{document_type}' is not a supported KYC document"
+                },
+                
+                "input_metrics": {
+                    "risk_score": risk_score,
+                    "risk_level": risk_level,
+                    "verified": verified,
+                    "extraction_confidence_score": data.get("confidence_score", 0.0),
+                    "document_identification_confidence": document_confidence
+                },
+                
+                "decision_version": "2.0.0 (Advanced)",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            logger.error(f"✗ DECISION: REJECTED | Document: {document_type} | Confidence: 100%")
+            return rejection_result
+        
+        # If document is a valid type (e.g., Aadhar, PAN, etc.) but confidence is low (30-50%)
+        # AND is_valid_kyc is True, we should proceed but note the low confidence
+        if is_valid_kyc and document_confidence < 0.5:
+            logger.warning(f"⚠️  CAUTION: Valid KYC document type '{document_type}' but with lower confidence ({document_confidence:.1%}). Will proceed with enhanced scrutiny.")
+            # Add extra risk adjustment for low confidence
+            risk_score = min(risk_score + 0.1, 1.0)  # Increase risk slightly for low confidence
+            logger.info(f"Risk score adjusted to {risk_score} due to low document confidence")
         
         # Log all data keys for debugging
         logger.info(f"All input data keys: {list(data.keys())}")

@@ -1,59 +1,9 @@
-version: '3.8'
 
 networks:
   kyc-network:
     driver: bridge
 
-volumes:
-  postgres_data:
-  keycloak_data:
-
 services:
-  # PostgreSQL Database for Keycloak
-  postgres:
-    image: postgres:15-alpine
-    container_name: kyc-postgres
-    environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak123
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - kyc-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Keycloak Identity Management
-  keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    container_name: kyc-keycloak
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin123
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak123
-      KC_PROXY: edge
-      KC_LOG_LEVEL: INFO
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - kyc-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # API Gateway - Entry point for all requests
   api-gateway:
@@ -142,7 +92,28 @@ services:
       timeout: 5s
       retries: 3
 
-  # Reason Agent - Performs reasoning on extracted data
+  # MCP Server - Model Context Protocol for RAG + Tools
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: kyc-mcp-server
+    ports:
+      - "8020:8020"
+    environment:
+      LOG_LEVEL: INFO
+      VECTOR_DB_PATH: /data/kyc_vector_db
+    volumes:
+      - kyc-vector-db:/data/kyc_vector_db
+    networks:
+      - kyc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # Reason Agent - Performs reasoning on extracted data (with RAG + MCP)
   reason-agent:
     build:
       context: ./agents/reason-agent
@@ -152,6 +123,11 @@ services:
       - "8003:8000"
     environment:
       LOG_LEVEL: INFO
+      OLLAMA_URL: http://ollama:11434
+      LLM_MODEL: mistral
+      MCP_SERVER_URL: http://mcp-server:8020
+    depends_on:
+      - mcp-server
     networks:
       - kyc-network
     healthcheck:
@@ -216,3 +192,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+
+volumes:
+  kyc-vector-db:
+    driver: local
