@@ -595,6 +595,24 @@ async def list_tools():
         ]
     }
 
+@app.post("/initialize")
+async def initialize_db():
+    """Manually initialize the vector database"""
+    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("Initializing Vector Database")
+    logger.info("═══════════════════════════════════════════════════════")
+    
+    initialize_kyc_rules()
+    initialize_fraud_patterns()
+    
+    return {
+        "status": "success",
+        "message": "Vector database initialized successfully",
+        "kyc_rules_count": len(kyc_rules_storage) if kyc_rules_storage else 0,
+        "fraud_patterns_count": len(fraud_patterns_storage) if fraud_patterns_storage else 0,
+        "vector_db_enabled": CHROMADB_AVAILABLE
+    }
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize data on startup"""

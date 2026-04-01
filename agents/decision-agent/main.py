@@ -214,6 +214,8 @@ class DecisionEngine:
     def make_decision(self, risk_score: float, risk_level: str, verified: bool, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Make final KYC decision based on comprehensive analysis
+        
+        REASONING-DRIVEN: Considers conflict analysis from Reason Agent
         """
         
         # Extract is_valid_kyc flag from data
@@ -221,6 +223,38 @@ class DecisionEngine:
         is_valid_kyc = data.get("is_valid_kyc", False)
         document_type = data.get("document_type", "Unknown")
         document_confidence = data.get("confidence", 0.0)
+        
+        # ═════════════════════════════════════════════════════════════
+        # NEW: Check conflict analysis from Reason Agent
+        # ═════════════════════════════════════════════════════════════
+        conflict_analysis = data.get("conflict_analysis")
+        conflicts_detected = data.get("conflicts_detected", False)
+        reasoning_applied = data.get("analysis_pipeline", {}).get("reasoning_applied", False)
+        
+        if conflicts_detected and conflict_analysis:
+            logger.info(f"\n🧠 REASONING-DRIVEN DECISION MAKING")
+            logger.info(f"   Conflicts detected: {conflicts_detected}")
+            logger.info(f"   Conflict analysis available: {conflict_analysis is not None}")
+            logger.info(f"   Reason Agent recommendation: {conflict_analysis.get('recommendation')}")
+            logger.info(f"   Fraud risk assessment: {conflict_analysis.get('fraud_risk')}")
+            logger.info(f"   Confidence: {conflict_analysis.get('confidence')}")
+            
+            # If Reason Agent found conflicts but low fraud risk, don't auto-reject
+            if conflict_analysis.get('fraud_risk') in ['low', 'LOW']:
+                logger.info(f"   ✓ Fraud risk is LOW - Not auto-rejecting despite conflicts")
+                logger.info(f"   ✓ Using Reason Agent recommendation: {conflict_analysis.get('recommendation')}")
+                
+                # Use the Reason Agent's recommendation
+                reason_recommendation = conflict_analysis.get('recommendation', 'ESCALATE').upper()
+                if reason_recommendation == 'APPROVE':
+                    rule = self.DECISION_RULES.get("very_low_risk", self.DECISION_RULES["low_risk"])
+                elif reason_recommendation == 'CONDITIONAL':
+                    rule = self.DECISION_RULES.get("low_medium_risk", self.DECISION_RULES["medium_risk"])
+                else:  # ESCALATE
+                    rule = self.DECISION_RULES.get("medium_risk", self.DECISION_RULES["medium_risk"])
+                
+                logger.info(f"   ✓ Decision rule applied: {rule['decision']}")
+                return self.format_decision(rule, risk_score)
         
         # Handle string representations of boolean
         if isinstance(is_valid_kyc, str):

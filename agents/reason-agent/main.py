@@ -249,23 +249,52 @@ async def retrieve_rag_context(document_type: str, document_text: str) -> Dict[s
 
 async def perform_rag_enhanced_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Perform intelligent analysis using RAG + MCP
+    Perform intelligent analysis using RAG + MCP with CONFLICT REASONING
     
-    Enhanced flow:
-    1. Retrieve relevant context from Vector DB via MCP
-    2. Perform multi-step LangChain analysis with RAG context
-    3. Extract keywords and anomalies
-    4. Generate comprehensive report
+    Reasoning-Driven Flow:
+    1. Check if conflicts detected (mismatch found!)
+    2. If conflicts: Retrieve relevant KYC rules about the conflict type
+    3. If conflicts: Retrieve fraud patterns to check
+    4. If conflicts: Use LLM to reason: "Is this fraud or explainable?"
+    5. Make intelligent decision (not auto-reject)
+    6. If no conflicts: Standard analysis
+    
+    Example: "Mismatch found, let me check KYC rules and fraud patterns before deciding"
     """
     
     text = data.get("text", "No text provided")
     verified = data.get("verified", False)
     confidence = data.get("confidence_score", 0.5)
     document_type = data.get("document_type", "Unknown")
+    conflicts = data.get("conflicts", [])  # ← CONFLICTS FROM VERIFY AGENT
     
     logger.info("═══════════════════════════════════════════════════════")
-    logger.info("🚀 Starting RAG + MCP Enhanced Analysis")
+    logger.info("🧠 Starting REASONING-DRIVEN Analysis with Conflict Detection")
     logger.info("═══════════════════════════════════════════════════════")
+    
+    # ═════════════════════════════════════════════════════════════
+    # REASONING STEP 0: Check for Conflicts
+    # ═════════════════════════════════════════════════════════════
+    if conflicts and len(conflicts) > 0:
+        logger.info(f"\n🚨 MISMATCH DETECTED! Found {len(conflicts)} conflict(s)")
+        logger.info("🧠 Reasoning: 'Let me check rules and patterns before deciding...'")
+        for conflict in conflicts:
+            logger.info(f"  - {conflict.get('type', 'unknown')}: {conflict.get('description', 'N/A')}")
+        
+        # Before making a decision, retrieve specific context for THIS conflict type
+        conflict_types = [c.get('type', 'unknown') for c in conflicts]
+        conflict_query = ", ".join(conflict_types)
+        
+        logger.info(f"\n📋 Step 0A: Retrieving KYC rules for conflicts: {conflict_query}")
+        conflict_rag_context = await retrieve_rag_context(
+            f"Handling {conflict_query} conflicts",
+            f"Document conflict types: {conflict_query}"
+        )
+        
+        logger.info(f"✓ Retrieved context for conflict analysis")
+    else:
+        logger.info("\n✓ No conflicts detected - performing standard analysis")
+        conflict_rag_context = None
     
     try:
         if not llm:
@@ -277,8 +306,69 @@ async def perform_rag_enhanced_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
         # STEP 0: Retrieve RAG context from Vector DB
         rag_context = await retrieve_rag_context(document_type, text)
         
-        # STEP 1: Perform LLM analysis with RAG context
-        logger.info("\n📊 Step 1: LLM Analysis with RAG Context...")
+        # ═════════════════════════════════════════════════════════════
+        # REASONING STEP 1: Analyze Conflicts with LLM if they exist
+        # ═════════════════════════════════════════════════════════════
+        conflict_analysis = None
+        if conflicts and len(conflicts) > 0 and llm:
+            logger.info("\n🧠 Step 1: LLM Conflict Reasoning...")
+            
+            try:
+                conflict_context = rag_context.get("kyc_rules", "No specific rules retrieved")
+                fraud_context = rag_context.get("fraud_patterns", "No fraud patterns retrieved")
+                
+                # Create conflict analysis prompt
+                conflict_prompt = ChatPromptTemplate.from_messages([
+                    ("system", """You are a KYC compliance expert analyzing document conflicts.
+Your task: Determine if conflicts are fraud indicators or explainable/resolvable issues.
+
+Use provided context:
+- KYC Rules: How document mismatches should be handled
+- Fraud Patterns: Known fraud indicators to check against
+- Document info: What we know about the document
+
+Respond in JSON with:
+{
+    "conflicts_analysis": "Detailed analysis of each conflict",
+    "fraud_risk": "low/medium/high - based on fraud patterns",
+    "likely_cause": "What probably caused this conflict",
+    "recommendation": "APPROVE/CONDITIONAL/ESCALATE/REJECT",
+    "confidence": 0.0-1.0,
+    "reasoning": "Why this recommendation"
+}"""),
+                    ("human", f"""Analyze these conflicts in the {document_type} document:
+
+CONFLICTS DETECTED:
+{json.dumps(conflicts, indent=2)}
+
+KYC RULES CONTEXT:
+{conflict_context[:1000]}
+
+FRAUD PATTERNS:
+{fraud_context[:1000]}
+
+DOCUMENT CONTEXT:
+- Type: {document_type}
+- Verification Score: {verified}
+- Confidence: {confidence}
+
+Should we REJECT this document or is the conflict EXPLAINABLE?""")
+                ])
+                
+                conflict_chain = conflict_prompt | llm | JsonOutputParser()
+                conflict_analysis = conflict_chain.invoke({})
+                
+                logger.info(f"  ✓ Conflict analysis completed")
+                logger.info(f"    - Fraud Risk: {conflict_analysis.get('fraud_risk')}")
+                logger.info(f"    - Recommendation: {conflict_analysis.get('recommendation')}")
+                logger.info(f"    - Reasoning: {conflict_analysis.get('reasoning', 'N/A')[:100]}...")
+                
+            except Exception as e:
+                logger.warning(f"  ⚠️  Conflict analysis failed: {e}")
+                conflict_analysis = None
+        
+        # STEP 2: Perform Standard LLM analysis with RAG context
+        logger.info("\n📊 Step 2: LLM Analysis with RAG Context...")
         
         analysis_chain = rag_analysis_prompt | llm | JsonOutputParser()
         
@@ -316,10 +406,16 @@ async def perform_rag_enhanced_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
         enhanced_analysis = {
             "status": "success",
             "model": LLM_MODEL,
-            "version": "3.0.0",
+            "version": "3.1.0",  # Updated for conflict reasoning
             "langchain_enabled": True,
             "rag_enabled": True,
             "mcp_enabled": True,
+            "reasoning_enabled": True,  # ← NEW: Reasoning-driven flag
+            
+            # Conflict Analysis (if conflicts detected)
+            "conflict_analysis": conflict_analysis,  # ← NEW: LLM reasoning about conflicts
+            "conflicts_detected": len(conflicts) > 0,  # ← NEW: Flag if conflicts
+            "num_conflicts": len(conflicts),  # ← NEW: Count of conflicts
             
             # LLM Analysis with RAG
             "llm_analysis": llm_analysis,
@@ -351,14 +447,17 @@ async def perform_rag_enhanced_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
             # Analysis Pipeline
             "analysis_pipeline": {
                 "steps_completed": [
+                    "conflict_detection",  # ← NEW: Conflict detection step
+                    "conflict_reasoning" if conflict_analysis else "standard_analysis",  # ← NEW
                     "rag_context_retrieval",
                     "llm_analysis_with_rag",
                     "keyword_extraction",
                     "anomaly_detection",
                     "quality_assessment"
                 ],
-                "total_steps": 5,
-                "enhancement_level": "RAG+MCP"
+                "total_steps": 7 if conflict_analysis else 6,
+                "enhancement_level": "RAG+MCP+CONFLICT_REASONING",  # ← NEW
+                "reasoning_applied": conflict_analysis is not None  # ← NEW
             },
             
             "timestamp": datetime.now().isoformat()
