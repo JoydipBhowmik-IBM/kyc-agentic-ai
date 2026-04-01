@@ -263,14 +263,6 @@ class DocumentValidator:
             score *= 0.5  # Penalize if conflicting keywords present
         
         return min(score, 1.0)
-        if any(keyword in text_lower for keyword in ['govt', 'sarkaar', 'भारत', 'government']):
-            score += 0.1
-        
-        # Strong reject if obviously not PAN (but allow combined documents)
-        if any(keyword in text_lower for keyword in ['valid upto', 'vehicle class', 'driving license', 'election commission', 'voter id']):
-            score *= 0.5  # Reduced penalty - could be combined doc
-        
-        return min(score, 1.0)
     
     def _check_passport(self, text: str, text_lower: str, text_normalized: str) -> float:
         """Check for Passport document characteristics"""

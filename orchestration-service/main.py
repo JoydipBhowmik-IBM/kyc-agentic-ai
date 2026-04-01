@@ -173,6 +173,8 @@ async def process(file: UploadFile = File(...)):
 
         if "error" in reason_result:
             logger.error(f"Reasoning failed: {reason_result['error']}")
+            logger.warning("Passing through verify result to risk agent")
+            reason_result = verify_result
 
         # Step 4: Risk Assessment
         logger.info("Step 4: Assessing risk...")
@@ -186,6 +188,8 @@ async def process(file: UploadFile = File(...)):
 
         if "error" in risk_result:
             logger.error(f"Risk assessment failed: {risk_result['error']}")
+            logger.warning("Passing through reason result to decision agent")
+            risk_result = reason_result
 
         # Step 5: Decision
         logger.info("Step 5: Making final decision...")
