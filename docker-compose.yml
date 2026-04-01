@@ -1,114 +1,248 @@
 version: '3.8'
 
+# KYC/AML Agentic AI - Docker Compose Configuration
+# Updated: April 1, 2026
+
+volumes:
+  kyc-vector-db:
+    driver: local
+  kyc-logs:
+    driver: local
+
 services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    environment:
-      - KEYCLOAK_USER=admin
-      - KEYCLOAK_PASSWORD=admin
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
-  api-gateway:
-    build:
-      context: ./api-gateway
-    ports:
-      - "8000:8000"
-    environment:
-      - ORCHESTRATION_SERVICE_URL=http://orchestration-service:8010
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  orchestration-service:
-    build:
-      context: ./orchestration-service
-    ports:
-      - "8010:8010"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
+  # Base Agents - Independent services
   extract-agent:
     build:
       context: ./agents/extract-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "8001:8000"
+      - "${EXTRACT_AGENT_PORT:-8007}:8000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
   verify-agent:
     build:
       context: ./agents/verify-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "8002:8000"
+      - "${VERIFY_AGENT_PORT:-8008}:8000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 10s
-
-  reason-agent:
-    build:
-      context: ./agents/reason-agent
-    ports:
-      - "8003:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      start_period: 20s
 
   risk-agent:
     build:
       context: ./agents/risk-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "8004:8000"
+      - "${RISK_AGENT_PORT:-8004}:8000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
 
   decision-agent:
     build:
       context: ./agents/decision-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "8005:8000"
+      - "${DECISION_AGENT_PORT:-8005}:8000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Vector DB Init - Runs once to initialize data
+  vector-db-init:
+    image: python:3.11-slim
+    working_dir: /app
+    command: >
+      bash -c "
+      echo '[1/3] Installing dependencies...' &&
+      python -m pip install --quiet chromadb pydantic 2>/dev/null &&
+      echo '[2/3] Initializing vector DB...' &&
+      python /app/init_vector_db_simple.py &&
+      echo '[3/3] Vector DB ready' &&
+      echo 'Initialization complete. Container will now sleep.' &&
+      sleep infinity
+      "
+    volumes:
+      - ./init_vector_db_simple.py:/app/init_vector_db_simple.py:ro
+      - ./kyc_vector_db:/app/kyc_vector_db
+      - kyc-vector-db:/data/kyc_vector_db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: "no"
+
+  # MCP Server - RAG + Vector DB Tools
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${MCP_SERVER_PORT:-8020}:8020"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      VECTOR_DB_PATH: /data/kyc_vector_db
+    volumes:
+      - kyc-vector-db:/data/kyc_vector_db
+      - ./kyc_vector_db:/app/kyc_vector_db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  # Reason Agent - AI Analysis with RAG
+  reason-agent:
+    build:
+      context: ./agents/reason-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${REASON_AGENT_PORT:-8003}:8000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      LLM_MODEL: ${LLM_MODEL:-mistral}
+      MCP_SERVER_URL: http://mcp-server:8020
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Orchestration Service - Agent Coordinator
+  orchestration-service:
+    build:
+      context: ./orchestration-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${ORCHESTRATION_PORT:-8010}:8010"
+    environment:
+      PORT: 8010
+      EXTRACT_AGENT_URL: http://extract-agent:8000
+      VERIFY_AGENT_URL: http://verify-agent:8000
+      REASON_AGENT_URL: http://reason-agent:8000
+      RISK_AGENT_URL: http://risk-agent:8000
+      DECISION_AGENT_URL: http://decision-agent:8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 15s
+      timeout: 5s
       retries: 3
       start_period: 30s
 
+  # API Gateway - Main Entry Point
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${API_GATEWAY_PORT:-8000}:8000"
+    environment:
+      ORCHESTRATION_SERVICE_URL: http://orchestration-service:8010
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Frontend - User Interface
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      API_GATEWAY_URL: ${API_GATEWAY_URL:-http://localhost:8000}
+      NODE_ENV: ${NODE_ENV:-production}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 30s
+

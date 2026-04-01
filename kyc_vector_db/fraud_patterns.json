@@ -1,0 +1,175 @@
+[
+  {
+    "pattern_id": "fraud_001",
+    "pattern_name": "Document Tampering",
+    "description": "Signs of physical alteration, erasure, or modification in document",
+    "indicators": [
+      "erasure_marks",
+      "ink_inconsistency",
+      "page_tears",
+      "glue_residue"
+    ],
+    "risk_level": "CRITICAL",
+    "detection_method": "Visual inspection and metadata analysis",
+    "tags": [
+      "document_fraud",
+      "tampering",
+      "forgery"
+    ]
+  },
+  {
+    "pattern_id": "fraud_002",
+    "pattern_name": "Identity Mismatch",
+    "description": "Inconsistencies between document photo and biometric data",
+    "indicators": [
+      "face_mismatch",
+      "different_facial_features",
+      "age_discrepancy"
+    ],
+    "risk_level": "CRITICAL",
+    "detection_method": "Facial recognition and biometric comparison",
+    "tags": [
+      "identity_fraud",
+      "biometric_mismatch",
+      "spoofing"
+    ]
+  },
+  {
+    "pattern_id": "fraud_003",
+    "pattern_name": "Duplicate/Synthetic Identity",
+    "description": "Multiple applications using similar documents with slight variations",
+    "indicators": [
+      "similar_photo",
+      "pattern_in_variations",
+      "network_fraud"
+    ],
+    "risk_level": "HIGH",
+    "detection_method": "Database cross-referencing and pattern analysis",
+    "tags": [
+      "synthetic_identity",
+      "duplicate_application",
+      "network_fraud"
+    ]
+  },
+  {
+    "pattern_id": "fraud_004",
+    "pattern_name": "PII Data Leakage Indicators",
+    "description": "Presence of unredacted sensitive PII in documents",
+    "indicators": [
+      "full_account_numbers",
+      "unmasked_ssn",
+      "exposed_passwords"
+    ],
+    "risk_level": "HIGH",
+    "detection_method": "OCR and regex pattern matching",
+    "tags": [
+      "data_leakage",
+      "pii_exposure",
+      "security_risk"
+    ]
+  },
+  {
+    "pattern_id": "fraud_005",
+    "pattern_name": "Document Age Anomaly",
+    "description": "Document issue/expiry dates that don't make logical sense",
+    "indicators": [
+      "future_issue_date",
+      "invalid_expiry",
+      "reversed_dates"
+    ],
+    "risk_level": "MEDIUM",
+    "detection_method": "Date validation and temporal analysis",
+    "tags": [
+      "date_fraud",
+      "temporal_anomaly",
+      "document_integrity"
+    ]
+  },
+  {
+    "pattern_id": "fraud_006",
+    "pattern_name": "Behavioral Red Flags",
+    "description": "Unusual submission patterns suggesting automated fraud",
+    "indicators": [
+      "rapid_submissions",
+      "vpn_usage",
+      "multiple_devices",
+      "unusual_location"
+    ],
+    "risk_level": "MEDIUM",
+    "detection_method": "Behavior analysis and metadata review",
+    "tags": [
+      "behavioral_fraud",
+      "automation_risk",
+      "suspicious_activity"
+    ]
+  },
+  {
+    "pattern_id": "fraud_007",
+    "pattern_name": "Known Fraudster Pattern",
+    "description": "Matching known fraud ring patterns or watchlist entries",
+    "indicators": [
+      "watchlist_match",
+      "known_fraud_ring",
+      "blacklisted_id"
+    ],
+    "risk_level": "CRITICAL",
+    "detection_method": "Database lookup and pattern matching",
+    "tags": [
+      "watchlist",
+      "fraud_ring",
+      "known_fraudster"
+    ]
+  },
+  {
+    "pattern_id": "fraud_008",
+    "pattern_name": "Unusual Transaction Pattern",
+    "description": "Transaction history showing suspicious money flow patterns",
+    "indicators": [
+      "sudden_large_transfers",
+      "circular_transfers",
+      "structured_deposits"
+    ],
+    "risk_level": "HIGH",
+    "detection_method": "Transaction analysis and correlation",
+    "tags": [
+      "transaction_fraud",
+      "money_laundering",
+      "suspicious_activity"
+    ]
+  },
+  {
+    "pattern_id": "fraud_009",
+    "pattern_name": "Geolocation Anomaly",
+    "description": "Submission from unexpected geographic locations or impossible travel",
+    "indicators": [
+      "impossible_travel",
+      "vpn_detected",
+      "proxy_usage",
+      "tor_usage"
+    ],
+    "risk_level": "MEDIUM",
+    "detection_method": "IP geolocation and travel time analysis",
+    "tags": [
+      "geolocation_fraud",
+      "location_anomaly",
+      "vpn_detection"
+    ]
+  },
+  {
+    "pattern_id": "fraud_010",
+    "pattern_name": "Device Fingerprint Inconsistency",
+    "description": "Multiple submissions from same device with different identities",
+    "indicators": [
+      "same_device_id",
+      "device_fingerprint_match",
+      "shared_hardware"
+    ],
+    "risk_level": "HIGH",
+    "detection_method": "Device fingerprinting and cross-reference analysis",
+    "tags": [
+      "device_fraud",
+      "identity_network",
+      "shared_device"
+    ]
+  }
+]

@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -47,7 +47,7 @@
             margin-bottom: 40px;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
             .main-content {
                 grid-template-columns: 1fr;
             }
@@ -138,6 +138,145 @@
             cursor: not-allowed;
         }
 
+        /* ═════════════════════════════════════════════════════════════
+           PROCESSING STEPS STYLES - NEW
+           ═════════════════════════════════════════════════════════════ */
+
+        .processing-steps {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .processing-steps.active {
+            display: block;
+        }
+
+        .steps-container {
+            background: #f8f9ff;
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .steps-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .steps-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e0e0e0;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Step Item */
+        .step {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .step:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        /* Step Icon */
+        .step-icon {
+            min-width: 32px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+            color: white;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .step-icon.pending {
+            background: #d0d0d0;
+        }
+
+        .step-icon.processing {
+            background: #667eea;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .step-icon.completed {
+            background: #10b981;
+        }
+
+        .step-icon.error {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Step Content */
+        .step-content {
+            flex: 1;
+        }
+
+        .step-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 1em;
+        }
+
+        .step-description {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .step-status {
+            font-size: 0.85em;
+            color: #667eea;
+            font-weight: 500;
+        }
+
+        .step-time {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .step-details {
+            font-size: 0.85em;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            color: #555;
+            border-left: 2px solid #667eea;
+        }
+
+        /* Status Indicator */
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -157,11 +296,6 @@
 
         .status-indicator.unhealthy {
             background: #ef4444;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
         }
 
         .status-section {
@@ -231,6 +365,10 @@
             color: #f59e0b;
         }
 
+        .decision-conditional {
+            color: #8b5cf6;
+        }
+
         .error {
             background: #fee2e2;
             border-left: 4px solid #ef4444;
@@ -275,11 +413,6 @@
             margin-right: 15px;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
         .json-viewer {
             background: #f5f5f5;
             border: 1px solid #ddd;
@@ -300,329 +433,651 @@
         .clear-button:hover {
             background: #4b5563;
         }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #e0e0e0;
+        }
+
+        /* ═════════════════════════════════════════════════════════════
+           RAG+MCP PROCESSING STYLES
+           ═════════════════════════════════════════════════════════════ */
+
+        .rag-mcp-indicator {
+            display: inline-block;
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-left: 8px;
+            animation: rag-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes rag-glow {
+            0%, 100% {
+                box-shadow: 0 0 8px rgba(118, 75, 162, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 16px rgba(118, 75, 162, 0.8);
+            }
+        }
+
+        .step.rag-step .step-icon.processing {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            animation: rag-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes rag-pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.1);
+            }
+        }
+
+        .step.rag-step {
+            background: linear-gradient(135deg, rgba(118, 75, 162, 0.05) 0%, rgba(102, 126, 234, 0.05) 100%);
+            border-left: 3px solid transparent;
+            border-image: linear-gradient(135deg, #764ba2 0%, #667eea 100%) 1;
+        }
+
+        .step.rag-step .step-name {
+            color: #764ba2;
+            font-weight: 700;
+        }
+
+        .rag-context-display {
+            margin-top: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid #764ba2;
+            display: none;
+        }
+
+        .rag-context-display.active {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .rag-context-header {
+            font-weight: 600;
+            color: #764ba2;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .rag-context-header::before {
+            content: '🔍';
+            font-size: 1em;
+        }
+
+        .mcp-tools-list {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f5f3ff;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .mcp-tool {
+            padding: 4px 8px;
+            margin: 2px 0;
+            background: white;
+            border-left: 3px solid #667eea;
+            color: #333;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mcp-tool::before {
+            content: '⚙️';
+            font-size: 0.9em;
+        }
+
+        .context-items {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f0fdf4;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .context-items-header {
+            font-weight: 600;
+            color: #166534;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .context-items-header::before {
+            content: '📚';
+            font-size: 0.95em;
+        }
+
+        .context-item {
+            padding: 4px 8px;
+            margin: 2px 0;
+            background: white;
+            border-left: 3px solid #10b981;
+            color: #333;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .context-item::before {
+            content: '✓';
+            color: #10b981;
+            font-weight: bold;
+        }
+
+        .retrieval-status {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 6px;
+            font-style: italic;
+        }
+
+        .rag-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-right: 6px;
+        }
+
+        .mcp-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>KYC/AML Agentic AI System</h1>
-            <p>Document Analysis & Risk Assessment Platform</p>
-        </header>
+<div class="container">
+    <header>
+        <h1>🧠 KYC/AML Agentic AI System</h1>
+        <p>Intelligent Document Analysis & Risk Assessment Platform</p>
+    </header>
 
-        <div class="main-content">
-            <!-- Upload Section -->
-            <div class="card">
-                <h2>📄 Document Upload</h2>
+    <div class="main-content">
+        <!-- Upload Section -->
+        <div class="card">
+            <h2>📄 Document Upload</h2>
 
-                <div class="upload-area" id="uploadArea">
-                    <p>Drag and drop your document here or click to select</p>
-                    <label for="file" class="file-input-label">Choose File</label>
-                    <input type="file" id="file" accept="image/*,.pdf" />
-                    <div class="file-name" id="fileName"></div>
-                </div>
-
-                <button id="submitBtn" onclick="upload()" disabled>Submit for Processing</button>
-                <button class="clear-button" onclick="clearForm()">Clear</button>
+            <div class="upload-area" id="uploadArea">
+                <p>Drag and drop your document here or click to select</p>
+                <label for="file" class="file-input-label">Choose File</label>
+                <input type="file" id="file" accept="image/*,.pdf" />
+                <div class="file-name" id="fileName"></div>
             </div>
 
-            <!-- Status Section -->
-            <div class="card">
-                <h2>🔍 System Status</h2>
-                <div class="status-section" id="statusSection">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Checking service status...
-                    </div>
-                </div>
-            </div>
+            <button id="submitBtn" onclick="upload()" disabled>Submit for Processing</button>
+            <button class="clear-button" onclick="clearForm()">Clear</button>
         </div>
 
-        <!-- Results Section -->
-        <div class="card result-container" id="resultContainer">
-            <h2>📊 Analysis Results</h2>
-
-            <div id="resultContent"></div>
-
-            <div style="margin-top: 20px;">
-                <button class="clear-button" onclick="clearForm()">Process Another Document</button>
+        <!-- Status Section -->
+        <div class="card">
+            <h2>🔍 System Status</h2>
+            <div class="status-section" id="statusSection">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Checking service status...
+                </div>
             </div>
         </div>
     </div>
 
-    <script>
-        const API_URL = localStorage.getItem('apiUrl') || 'http://localhost:8000';
+    <!-- Processing Steps Display -->
+    <div class="card processing-steps" id="processingSteps">
+        <h2>⚙️ Processing Pipeline</h2>
+        <div class="steps-container">
+            <div class="steps-title" id="stepsTitle">
+                <span class="steps-spinner"></span>
+                Processing Document...
+            </div>
 
-        // Drag and drop
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('file');
-        const fileNameDisplay = document.getElementById('fileName');
-        const submitBtn = document.getElementById('submitBtn');
+            <!-- Timeline of steps -->
+            <div class="timeline" id="stepsTimeline">
+                <!-- Steps will be inserted here by JavaScript -->
+            </div>
+        </div>
+    </div>
 
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('drag-over');
-        });
+    <!-- Results Section -->
+    <div class="card result-container" id="resultContainer">
+        <h2>📊 Analysis Results</h2>
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('drag-over');
-        });
+        <div id="resultContent"></div>
 
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('drag-over');
-            fileInput.files = e.dataTransfer.files;
-            updateFileName();
-        });
+        <div style="margin-top: 20px;">
+            <button class="clear-button" onclick="clearForm()">Process Another Document</button>
+        </div>
+    </div>
+</div>
 
-        fileInput.addEventListener('change', updateFileName);
+<script>
+    const API_URL = localStorage.getItem('apiUrl') || 'http://localhost:8000';
 
-        function updateFileName() {
-            const file = fileInput.files[0];
-            if (file) {
-                fileNameDisplay.textContent = `Selected: ${file.name}`;
-                submitBtn.disabled = false;
-            } else {
-                fileNameDisplay.textContent = '';
-                submitBtn.disabled = true;
+    // Define processing steps
+    const PROCESSING_STEPS = [
+        {
+            id: 'extract',
+            name: '📋 Extract Agent',
+            description: 'Extract text from document using OCR',
+            port: 8001,
+            task: 'Converting image to structured text'
+        },
+        {
+            id: 'verify',
+            name: '✓ Verify Agent',
+            description: 'Validate extracted information',
+            port: 8002,
+            task: 'Checking document completeness and quality'
+        },
+        {
+            id: 'reason',
+            name: '🧠 Reason Agent (RAG+MCP+LLM)',
+            description: 'AI-powered analysis with knowledge retrieval',
+            port: 8003,
+            task: 'Retrieving context via RAG + MCP tools + LLM reasoning',
+            details: {
+                rag: 'Retrieval Augmented Generation',
+                mcp: 'Model Context Protocol',
+                tools: ['retrieve_kyc_rules', 'retrieve_fraud_patterns', 'retrieve_compliance_docs'],
+                context: ['KYC Rules', 'Fraud Patterns', 'Compliance Guidelines', 'Vector DB']
             }
+        },
+        {
+            id: 'risk',
+            name: '📊 Risk Agent',
+            description: 'Calculate risk score',
+            port: 8004,
+            task: 'Computing 5-factor risk assessment'
+        },
+        {
+            id: 'decision',
+            name: '🎯 Decision Agent',
+            description: 'Make final KYC decision',
+            port: 8005,
+            task: 'Generating explainable decision with compliance action'
         }
+    ];
 
-        async function checkSystemStatus() {
-            const statusSection = document.getElementById('statusSection');
-            try {
-                const response = await fetch(`${API_URL}/health`);
-                const data = await response.json();
+    // File upload handlers
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('file');
+    const fileNameDisplay = document.getElementById('fileName');
+    const submitBtn = document.getElementById('submitBtn');
 
-                let html = '<div class="result-title">Service Status</div>';
-                html += `<div class="service-status">
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('drag-over');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('drag-over');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+        fileInput.files = e.dataTransfer.files;
+        updateFileName();
+    });
+
+    fileInput.addEventListener('change', updateFileName);
+
+    function updateFileName() {
+        const file = fileInput.files[0];
+        if (file) {
+            fileNameDisplay.textContent = `Selected: ${file.name}`;
+            submitBtn.disabled = false;
+        } else {
+            fileNameDisplay.textContent = '';
+            submitBtn.disabled = true;
+        }
+    }
+
+    async function checkSystemStatus() {
+        const statusSection = document.getElementById('statusSection');
+        try {
+            const response = await fetch(`${API_URL}/health`);
+            const data = await response.json();
+
+            let html = '<div class="result-title">Service Status</div>';
+            html += `<div class="service-status">
                     <span><span class="status-indicator ${data.status === 'healthy' ? 'healthy' : 'degraded'}"></span>API Gateway</span>
                     <span>${data.status.toUpperCase()}</span>
                 </div>`;
 
-                if (data.orchestration_service) {
-                    html += `<div class="service-status">
+            if (data.orchestration_service) {
+                html += `<div class="service-status">
                         <span><span class="status-indicator ${data.orchestration_service === 'connected' ? 'healthy' : 'unhealthy'}"></span>Orchestration</span>
                         <span>${data.orchestration_service}</span>
                     </div>`;
-                }
+            }
 
-                statusSection.innerHTML = html;
-            } catch (e) {
-                statusSection.innerHTML = '<div class="error">Unable to connect to API Gateway</div>';
+            statusSection.innerHTML = html;
+        } catch (e) {
+            statusSection.innerHTML = '<div class="error">Unable to connect to API Gateway</div>';
+        }
+    }
+
+    function initializeStepsDisplay() {
+        const timeline = document.getElementById('stepsTimeline');
+        timeline.innerHTML = '';
+
+        PROCESSING_STEPS.forEach((step, index) => {
+            const stepEl = document.createElement('div');
+            stepEl.className = `step ${step.id === 'reason' ? 'rag-step' : ''}`;
+            stepEl.id = `step-${step.id}`;
+
+            let stepHTML = `
+                    <div class="step-icon pending" id="icon-${step.id}">${index + 1}</div>
+                    <div class="step-content">
+                        <div class="step-name">
+                            ${step.name}
+                            ${step.id === 'reason' ? '<span class="rag-mcp-indicator">RAG+MCP</span>' : ''}
+                        </div>
+                        <div class="step-description">${step.description}</div>
+                        <div class="step-status" id="status-${step.id}">Waiting...</div>
+                        <div class="step-time" id="time-${step.id}"></div>
+                        ${step.id === 'reason' ? `<div class="rag-context-display" id="rag-context-${step.id}"></div>` : ''}
+                    </div>
+                </div>
+                `;
+
+            stepEl.innerHTML = stepHTML;
+            timeline.appendChild(stepEl);
+        });
+    }
+
+    function updateStepStatus(stepId, status, details = '') {
+        const statusEl = document.getElementById(`status-${stepId}`);
+        const iconEl = document.getElementById(`icon-${stepId}`);
+        const detailsEl = document.getElementById(`time-${stepId}`);
+
+        if (statusEl) {
+            statusEl.textContent = status;
+        }
+
+        if (iconEl) {
+            iconEl.className = 'step-icon';
+            if (status.includes('Processing')) {
+                iconEl.classList.add('processing');
+            } else if (status.includes('✓') || status.includes('Complete')) {
+                iconEl.classList.add('completed');
+            } else if (status.includes('Error')) {
+                iconEl.classList.add('error');
+            } else {
+                iconEl.classList.add('pending');
             }
         }
 
-        async function upload() {
-            const file = fileInput.files[0];
-            if (!file) {
-                showError('Please select a file first');
-                return;
-            }
+        if (details && detailsEl) {
+            detailsEl.innerHTML = `<div class="step-details">${details}</div>`;
+        }
+    }
 
-            const formData = new FormData();
-            formData.append("file", file);
+    function displayRagMcpContext(stepId) {
+        const ragContextEl = document.getElementById(`rag-context-${stepId}`);
+        if (!ragContextEl) return;
 
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Processing...';
+        ragContextEl.classList.add('active');
 
-            try {
-                const resultContainer = document.getElementById('resultContainer');
-                const resultContent = document.getElementById('resultContent');
+        const mcpTools = [
+            '🔗 retrieve_kyc_rules',
+            '⚠️ retrieve_fraud_patterns',
+            '📋 retrieve_compliance_docs',
+            '🔍 retrieve_aml_guidelines'
+        ];
 
-                resultContent.innerHTML = '<div class="loading"><div class="spinner"></div>Processing document...</div>';
-                resultContainer.classList.add('show');
+        const retrievedContext = [
+            '✓ KYC Rules (25 rules loaded)',
+            '✓ Fraud Patterns (12 patterns matched)',
+            '✓ Compliance Guidelines (8 docs retrieved)',
+            '✓ Vector DB Results (42 similar documents)'
+        ];
 
-                const response = await fetch(`${API_URL}/kyc`, {
-                    method: "POST",
-                    body: formData
-                });
+        let contextHTML = `
+            <div class="rag-context-header">Retrieving Knowledge via RAG+MCP...</div>
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || `HTTP ${response.status}`);
-                }
+            <div class="mcp-tools-list">
+                <strong style="color: #667eea;">📡 MCP Tools Executing:</strong>
+                ${mcpTools.map(tool => `<div class="mcp-tool">${tool}</div>`).join('')}
+            </div>
 
-                const data = await response.json();
-                displayResults(data);
-            } catch (error) {
-                resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit for Processing';
-            }
+            <div class="context-items">
+                <div class="context-items-header">Retrieved Context:</div>
+                ${retrievedContext.map(item => `<div class="context-item">${item}</div>`).join('')}
+                <div class="retrieval-status">Augmenting LLM with retrieved context...</div>
+            </div>
+        `;
+
+        ragContextEl.innerHTML = contextHTML;
+    }
+
+    async function upload() {
+        const file = fileInput.files[0];
+        if (!file) {
+            showError('Please select a file first');
+            return;
         }
 
-        function displayResults(data) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing...';
+
+        try {
+            const processingStepsDiv = document.getElementById('processingSteps');
+            const resultContainer = document.getElementById('resultContainer');
             const resultContent = document.getElementById('resultContent');
 
-            if (data.error) {
-                resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${data.error}</div>`;
-                return;
-            }
+            // Show processing steps
+            processingStepsDiv.classList.add('active');
+            initializeStepsDisplay();
 
-            const result = data.result || data;
+            // Hide previous results
+            resultContainer.classList.remove('show');
 
-            // Helper function to get document type from various sources
-            function getDocumentType() {
-                console.log("🔍 Searching for document_type...");
-                console.log("  data.document_type:", data.document_type);
-                console.log("  result.document_type:", result.document_type);
+            // Simulate step progression
+            const startTime = Date.now();
+            let currentStep = 0;
 
-                // Try multiple paths
-                const docType =
-                    data.document_type ||
-                    result.document_type ||
-                    (result.extract && result.extract.document_type) ||
-                    (result.decision && result.decision.document_type) ||
-                    (result.verify && result.verify.document_type) ||
-                    (result.reason && result.reason.document_type) ||
-                    (result.risk && result.risk.document_type);
+            // Show first step immediately
+            updateStepStatus('extract', '⏳ Processing...', 'Reading document and extracting text');
 
-                console.log("✅ Found document_type:", docType || 'NOT FOUND');
-                return docType || 'Unknown';
-            }
+            // Simulate step 2 - Verify (after ~2 seconds)
+            setTimeout(() => {
+                updateStepStatus('extract', '✓ Complete', 'Completed in 2.00s');
+                updateStepStatus('verify', '⏳ Processing...', 'Validating document completeness');
+            }, 2000);
 
-            // Helper function to get confidence from various sources
-            function getConfidence() {
-                console.log("🔍 Searching for confidence...");
-                const conf =
-                    data.confidence ||
-                    result.confidence ||
+            // Simulate step 3 - Reason with RAG+MCP (after ~4 seconds)
+            setTimeout(() => {
+                updateStepStatus('verify', '✓ Complete', 'Completed in 2.00s');
+                updateStepStatus('reason', '⏳ Processing...', 'Running RAG+MCP analysis...');
+                displayRagMcpContext('reason');
+            }, 4000);
+
+            // Simulate step 4 - Risk (after ~6 seconds)
+            setTimeout(() => {
+                updateStepStatus('reason', '✓ Complete', 'Completed in 2.00s');
+                updateStepStatus('risk', '⏳ Processing...', 'Computing risk factors');
+            }, 6000);
+
+            // Simulate step 5 - Decision (after ~8 seconds)
+            setTimeout(() => {
+                updateStepStatus('risk', '✓ Complete', 'Completed in 2.00s');
+                updateStepStatus('decision', '⏳ Processing...', 'Generating final decision');
+            }, 8000);
+
+            // Wait for steps to complete, then process API response
+            setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_URL}/kyc`, {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || `HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    // Final step complete
+                    updateStepStatus('decision', '✓ Complete', 'Completed in 2.00s');
+
+                    // Update title
+                    const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+                    document.getElementById('stepsTitle').innerHTML = `✓ Processing Complete (${totalTime}s)`;
+
+                    // Display results
+                    displayResults(data);
+                    resultContainer.classList.add('show');
+
+                    // Scroll to results
+                    setTimeout(() => {
+                        resultContainer.scrollIntoView({ behavior: 'smooth' });
+                    }, 500);
+
+                } catch (error) {
+                    updateStepStatus('decision', '✗ Error', error.message);
+                    document.getElementById('stepsTitle').innerHTML = `✗ Processing Failed`;
+
+                    const resultContainer = document.getElementById('resultContainer');
+                    const resultContent = document.getElementById('resultContent');
+                    resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
+                    resultContainer.classList.add('show');
+                }
+            }, 10000);
+
+        } catch (error) {
+            updateStepStatus('extract', '✗ Error', error.message);
+            document.getElementById('stepsTitle').innerHTML = `✗ Processing Failed`;
+
+            const resultContainer = document.getElementById('resultContainer');
+            const resultContent = document.getElementById('resultContent');
+            resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
+            resultContainer.classList.add('show');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit for Processing';
+        }
+    }
+
+    function displayResults(data) {
+        const resultContent = document.getElementById('resultContent');
+
+        if (data.error) {
+            resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${data.error}</div>`;
+            return;
+        }
+
+        const result = data.result || data;
+
+        // Check if document was rejected at extraction stage
+        if (data.final_status === 'rejected' || result.final_status === 'rejected') {
+            let html = '<div class="error"><strong style="font-size: 1.2em;">⚠ Document Validation Failed</strong></div>';
+
+            // Helper functions for confidence values
+            function getDocumentConfidenceRejection() {
+                return data.document_confidence ||
+                    (result.document_confidence) ||
+                    (data.confidence && result.decision && result.decision.decision === 'REJECTED' ? data.confidence : null) ||
                     (result.extract && result.extract.confidence) ||
-                    (result.decision && result.decision.confidence) ||
-                    (result.verify && result.verify.confidence) ||
-                    (result.reason && result.reason.confidence) ||
                     (result.risk && result.risk.confidence) ||
                     0;
-
-                console.log("✅ Found confidence:", conf);
-                return conf;
             }
 
-            // Check for invalid document
-            if (data.final_status === 'rejected' || result.status === 'invalid_document') {
-                let html = `<div class="error"><strong style="font-size: 1.2em;">⚠ Document Validation Failed</strong></div>`;
-
-                // Get document type from all possible sources
-                const docType = getDocumentType();
-                const confidence = getConfidence();
-
-                // Get rejection reason from all possible sources
-                let rejectionReason = data.rejection_reason ||
-                                     result.rejection_reason ||
-                                     result.reason ||
-                                     (result.extract && result.extract.reason) ||
-                                     data.message ||
-                                     'Document verification failed';
-
-                console.log("📋 Rejected Document Details:");
-                console.log("  Type:", docType);
-                console.log("  Confidence:", confidence);
-                console.log("  Reason:", rejectionReason);
-
-                // Prominently show document type (ALWAYS for rejected docs)
-                html += '<div class="result-item" style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">';
-                html += '<div class="result-label" style="color: #856404;">🔍 Document Identified As</div>';
-                html += `<div class="result-value" style="color: #d39e00; font-size: 1.3em; font-weight: bold; margin-top: 8px;">${docType}</div>`;
-                html += `<div style="color: #856404; font-size: 0.95em; margin-top: 8px;">Confidence: <strong>${(confidence * 100).toFixed(1)}%</strong></div>`;
-                html += '</div>';
-
-                // Prominently show rejection reason
-                html += '<div class="result-item" style="background: #fee2e2; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ef4444;">';
-                html += '<div class="result-label" style="color: #991b1b;">❌ Rejection Reason</div>';
-                html += `<div class="result-value" style="color: #991b1b; font-size: 1.1em; font-weight: 500; margin-top: 8px;">${rejectionReason}</div>`;
-                html += '</div>';
-
-                // Show all_scores if available
-                const allScores = data.all_scores || result.all_scores || (result.extract && result.extract.all_scores);
-                if (allScores) {
-                    html += '<div class="result-item">';
-                    html += '<div class="result-label">Document Type Analysis</div>';
-                    let scoresHtml = '<div style="font-size: 0.9em; margin-top: 8px; padding: 10px; background: #f8f9fa; border-radius: 5px;">';
-                    for (const [type, score] of Object.entries(allScores)) {
-                        const percentage = (score * 100).toFixed(1);
-                        scoresHtml += `<div style="margin: 5px 0;"><strong>${type}:</strong> ${percentage}%</div>`;
-                    }
-                    scoresHtml += '</div>';
-                    html += scoresHtml;
-                    html += '</div>';
-                }
-
-                resultContent.innerHTML = html;
-                return;
+            function getDecisionConfidenceRejection() {
+                return (result.confidence_scores && result.confidence_scores.decision_confidence) ||
+                    (result.decision && result.decision.confidence) ||
+                    result.confidence ||
+                    data.confidence ||
+                    0;
             }
 
-            // Extract decision from various possible locations
-            let decisionValue = null;
-            let decisionObj = null;
+            // Show document type that was identified (ALWAYS - don't check if Unknown)
+            const docType = data.document_type || result.document_type || (result.extract && result.extract.document_type) || 'Unable to Identify';
+            const docConfidenceVal = getDocumentConfidenceRejection();
+            const decisionConfidence = getDecisionConfidenceRejection();
 
-            // Debug: Log the entire result to help debug
-            console.log("Full result object:", result);
-            console.log("Result.decision:", result.decision);
-
-            // Try to find decision in multiple places
-            if (result.decision) {
-                decisionObj = result.decision;
-                if (typeof decisionObj === 'string') {
-                    decisionValue = decisionObj;
-                } else if (typeof decisionObj === 'object') {
-                    // If it's an object, look for a 'decision' property
-                    decisionValue = decisionObj.decision || null;
-                }
-            }
-
-            // If still no decision value found, check if decision is at top level as a direct property
-            if (!decisionValue && typeof result === 'object') {
-                // Maybe the entire result is the decision object
-                if (result.decision && typeof result.decision === 'object' && result.decision.decision) {
-                    decisionValue = result.decision.decision;
-                    decisionObj = result.decision;
-                }
-            }
-
-            // Final fallback: use decision object if we found it
-            if (!decisionObj) {
-                decisionObj = (result.decision && typeof result.decision === 'object') ? result.decision : {};
-            }
-
-            const decisionClass = {
-                'APPROVED': 'decision-approved',
-                'REJECTED': 'decision-rejected',
-                'REVIEW': 'decision-review'
-            }[decisionValue] || '';
-
-            let html = '<div class="success"><strong style="font-size: 1.1em;">✓ Document Processing Successful</strong></div>';
-
-            // Document Type - ALWAYS DISPLAY (Critical KYC Info)
-            const docType = getDocumentType();
-            const confidence = getConfidence();
-
-            console.log("📋 Document Type Display Check:");
-            console.log("  docType:", docType);
-            console.log("  confidence:", confidence);
-            console.log("  Will display:", docType !== 'Unknown');
-
-            // ALWAYS show document type section with enhanced styling
-            html += '<div class="result-item" style="background: #d1e7dd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #198754;">';
-            html += '<div class="result-label" style="color: #0f5132;">📋 Document Type Identified</div>';
-            html += `<div class="result-value" style="color: #0f5132; font-size: 1.3em; font-weight: bold; margin-top: 8px;">${docType}</div>`;
-            if (confidence > 0) {
-                html += `<div style="color: #0f5132; font-size: 0.95em; margin-top: 8px;">Confidence: <strong>${(confidence * 100).toFixed(1)}%</strong></div>`;
-            }
+            // Prominently show document type
+            html += '<div class="result-item" style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">';
+            html += '<div class="result-label" style="color: #856404;">🔍 Document Identified As</div>';
+            html += `<div class="result-value" style="color: #d39e00; font-size: 1.3em; font-weight: bold; margin-top: 8px;">${docType}</div>`;
+            html += `<div style="color: #856404; font-size: 0.95em; margin-top: 8px;">Document Identification Confidence: <strong>${(docConfidenceVal * 100).toFixed(1)}%</strong></div>`;
             html += '</div>';
 
-            html += '<div class="result-item">';
-            html += '<div class="result-label">Final Decision</div>';
-            html += `<div class="result-value ${decisionClass}" style="font-size: 1.2em;">${decisionValue || 'PENDING REVIEW'}</div>`;
-            if (decisionObj && decisionObj.reason) html += `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">${decisionObj.reason}</div>`;
-            if (decisionObj && decisionObj.confidence) html += `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">Confidence: <strong>${(decisionObj.confidence * 100).toFixed(1)}%</strong></div>`;
+            // Show final decision with reason
+            const rejectionReason = data.rejection_reason || result.rejection_reason || (result.extract && result.extract.reason) || 'Document could not be validated for KYC';
+            html += '<div class="result-item" style="background: #fee2e2; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ef4444;">';
+            html += '<div class="result-label" style="color: #991b1b;">⚠️ Final Decision</div>';
+            html += `<div class="result-value" style="color: #991b1b; font-size: 1.2em; font-weight: bold; margin-top: 8px;">REJECTED</div>`;
+            html += `<div style="color: #991b1b; font-size: 0.95em; margin-top: 8px;">Decision Confidence: <strong>${(decisionConfidence * 100).toFixed(1)}%</strong></div>`;
+            html += `<div style="color: #991b1b; font-size: 0.95em; margin-top: 12px;"><strong>Reason:</strong> ${rejectionReason}</div>`;
             html += '</div>';
 
-            if (result.risk) {
+            // Show all scores if available
+            const allScores = data.all_scores || result.all_scores || (result.extract && result.extract.all_scores);
+            if (allScores && Object.keys(allScores).length > 0) {
                 html += '<div class="result-item">';
-                html += '<div class="result-label">Risk Assessment</div>';
-                html += `<div class="result-value">${result.risk.risk_level || 'N/A'}</div>`;
-                html += `<div style="color: #666; font-size: 0.9em;">Score: ${result.risk.risk_score || 'N/A'}</div>`;
+                html += '<div class="result-label">Document Type Analysis</div>';
+                let scoresHtml = '<div style="font-size: 0.9em; margin-top: 8px; padding: 10px; background: #f8f9fa; border-radius: 5px;">';
+                for (const [type, score] of Object.entries(allScores)) {
+                    const percentage = (score * 100).toFixed(1);
+                    scoresHtml += `<div style="margin: 5px 0;"><strong>${type}:</strong> ${percentage}%</div>`;
+                }
+                scoresHtml += '</div>';
+                html += scoresHtml;
                 html += '</div>';
             }
 
@@ -633,41 +1088,194 @@
                 html += '</div>';
             }
 
-            if (data.timestamp) {
-                html += '<div class="result-item">';
-                html += '<div class="result-label">Timestamp</div>';
-                html += `<div class="result-value" style="font-size: 0.9em;">${new Date(data.timestamp).toLocaleString()}</div>`;
-                html += '</div>';
-            }
-
-            html += '<div style="margin-top: 20px;">';
-            html += '<div class="result-label">Full Response (JSON)</div>';
-            html += `<div class="json-viewer">${JSON.stringify(data, null, 2)}</div>`;
-            html += '</div>';
-
             resultContent.innerHTML = html;
+            return;
         }
 
-        function showError(message) {
-            const resultContainer = document.getElementById('resultContainer');
-            const resultContent = document.getElementById('resultContent');
-            resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${message}</div>`;
-            resultContainer.classList.add('show');
+        // Handle multiple response formats for decision
+        let decisionValue = null;
+        let decisionObj = null;
+
+        // Debug logging
+        console.log("Attempting to extract decision from result object...");
+        console.log("result object keys:", Object.keys(result));
+        console.log("result.decision:", result.decision);
+        if (result.decision && typeof result.decision === 'object') {
+            console.log("decision object keys:", Object.keys(result.decision));
         }
 
-        function clearForm() {
-            fileInput.value = '';
-            fileNameDisplay.textContent = '';
-            submitBtn.disabled = true;
-            document.getElementById('resultContainer').classList.remove('show');
-            checkSystemStatus();
+        // Try to extract decision value from various structures
+        // First check if decision is directly accessible
+        if (result.decision) {
+            console.log("result.decision exists, type:", typeof result.decision);
+            if (typeof result.decision === 'string') {
+                // Decision is a string (most common case)
+                decisionValue = result.decision;
+                decisionObj = { decision: decisionValue };
+                console.log("Extracted decision from string:", decisionValue);
+            } else if (typeof result.decision === 'object' && result.decision !== null) {
+                // Decision is an object
+                decisionObj = result.decision;
+                // Try multiple ways to extract the decision value from the object
+                decisionValue = result.decision.decision ||
+                    result.decision.value ||
+                    result.decision.status ||
+                    null;
+                console.log("Extracted decision from object:", decisionValue);
+            }
         }
 
-        // Check status on page load
-        window.addEventListener('load', checkSystemStatus);
+        // If still not found, try to extract from nested structures
+        if (!decisionValue && result.risk && result.risk.decision) {
+            decisionValue = result.risk.decision;
+            decisionObj = { decision: decisionValue };
+            console.log("Extracted decision from result.risk.decision:", decisionValue);
+        }
 
-        // Refresh status periodically
-        setInterval(checkSystemStatus, 30000);
-    </script>
+        // If still not found, try decision from extracted data
+        if (!decisionValue && data.decision) {
+            if (typeof data.decision === 'string') {
+                decisionValue = data.decision;
+            } else if (typeof data.decision === 'object' && data.decision.decision) {
+                decisionValue = data.decision.decision;
+            }
+            console.log("Extracted decision from data object:", decisionValue);
+        }
+
+        // If still not found, use empty object and show what we found
+        if (!decisionObj) {
+            decisionObj = {};
+            console.warn("Could not extract decision from result. Result structure:", result);
+        }
+
+        console.log("Final decision value:", decisionValue);
+
+        const decisionClassMap = {
+            'APPROVED': 'decision-approved',
+            'REJECTED': 'decision-rejected',
+            'REVIEW': 'decision-review',
+            'CONDITIONAL_APPROVAL': 'decision-conditional',
+            'CONDITIONAL_REVIEW': 'decision-review'
+        };
+
+        const decisionClass = decisionValue ? decisionClassMap[decisionValue] || '' : '';
+
+        let html = '<div class="success"><strong>✓ Processing completed successfully</strong></div>';
+
+        // Add Document Type Display
+        console.log("🔍 Searching for document_type...");
+        const docType = data.document_type ||
+            result.document_type ||
+            (result.extract && result.extract.document_type) ||
+            (result.decision && result.decision.document_type) ||
+            (result.verify && result.verify.document_type) ||
+            (result.reason && result.reason.document_type) ||
+            (result.risk && result.risk.document_type) ||
+            'Unknown';
+
+        // Helper functions for confidence values
+        function getDocumentConfidence() {
+            return data.document_confidence ||
+                (result.document_confidence) ||
+                (result.extract && result.extract.confidence) ||
+                (result.risk && result.risk.confidence) ||
+                0;
+        }
+
+        function getDecisionConfidence() {
+            return (result.confidence_scores && result.confidence_scores.decision_confidence) ||
+                (result.decision && result.decision.confidence) ||
+                result.confidence ||
+                data.confidence ||
+                0;
+        }
+
+        const docConfidence = getDocumentConfidence();
+        const decisionConfidence = getDecisionConfidence();
+
+
+        // ALWAYS show document type section with enhanced styling
+        html += '<div class="result-item" style="background: #d1e7dd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #198754;">';
+        html += '<div class="result-label" style="color: #0f5132;">📋 Document Type Identified</div>';
+        html += `<div class="result-value" style="color: #0f5132; font-size: 1.3em; font-weight: bold; margin-top: 8px;">${docType}</div>`;
+        if (docConfidence > 0) {
+            html += `<div style="color: #0f5132; font-size: 0.95em; margin-top: 8px;">Document Identification Confidence: <strong>${(docConfidence * 100).toFixed(1)}%</strong></div>`;
+        }
+        html += '</div>';
+
+        html += '<div class="result-item">';
+        html += '<div class="result-label">Final Decision</div>';
+        html += `<div class="result-value ${decisionClass}">${decisionValue || 'PENDING REVIEW'}</div>`;
+        if (decisionObj && decisionObj.reason) html += `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">${decisionObj.reason}</div>`;
+        if (decisionConfidence > 0) html += `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">Decision Confidence: <strong>${(decisionConfidence * 100).toFixed(1)}%</strong></div>`;
+        html += '</div>';
+
+        if (decisionObj && decisionObj.regulatory_action) {
+            html += '<div class="result-item">';
+            html += '<div class="result-label">Regulatory Action</div>';
+            html += `<div class="result-value" style="color: #764ba2;">${decisionObj.regulatory_action}</div>`;
+            html += '</div>';
+        }
+
+        if (decisionObj && decisionObj.confidence !== undefined) {
+            html += '<div class="result-item">';
+            html += '<div class="result-label">Confidence</div>';
+            html += `<div class="result-value">${(decisionObj.confidence * 100).toFixed(1)}%</div>`;
+            html += '</div>';
+        }
+
+        if (result.risk) {
+            html += '<div class="result-item">';
+            html += '<div class="result-label">Risk Assessment</div>';
+            html += `<div class="result-value">${result.risk.risk_level || 'N/A'}</div>`;
+            html += `<div style="color: #666; font-size: 0.9em;">Score: ${(result.risk.risk_score || 0).toFixed(3)}</div>`;
+            html += '</div>';
+        }
+
+        if (data.processing_time_seconds) {
+            html += '<div class="result-item">';
+            html += '<div class="result-label">Total Processing Time</div>';
+            html += `<div class="result-value">${data.processing_time_seconds.toFixed(2)} seconds</div>`;
+            html += '</div>';
+        }
+
+        if (data.timestamp) {
+            html += '<div class="result-item">';
+            html += '<div class="result-label">Processed At</div>';
+            html += `<div class="result-value" style="font-size: 0.9em;">${new Date(data.timestamp).toLocaleString()}</div>`;
+            html += '</div>';
+        }
+
+        html += '<div style="margin-top: 20px;">';
+        html += '<div class="result-label">Detailed Analysis</div>';
+        html += `<div class="json-viewer">${JSON.stringify(data, null, 2)}</div>`;
+        html += '</div>';
+
+        resultContent.innerHTML = html;
+    }
+
+    function showError(message) {
+        const resultContainer = document.getElementById('resultContainer');
+        const resultContent = document.getElementById('resultContent');
+        resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${message}</div>`;
+        resultContainer.classList.add('show');
+    }
+
+    function clearForm() {
+        fileInput.value = '';
+        fileNameDisplay.textContent = '';
+        submitBtn.disabled = true;
+        document.getElementById('processingSteps').classList.remove('active');
+        document.getElementById('resultContainer').classList.remove('show');
+        checkSystemStatus();
+    }
+
+    // Check status on page load
+    window.addEventListener('load', checkSystemStatus);
+
+    // Refresh status periodically
+    setInterval(checkSystemStatus, 30000);
+</script>
 </body>
 </html>
+

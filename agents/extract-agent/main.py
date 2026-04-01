@@ -179,6 +179,16 @@ async def extract(file: UploadFile = File(...)):
         
         logger.info(f"Document validation - Type: {validation_result['document_type']}, Valid KYC: {validation_result['is_valid_kyc']}")
         
+        # CRITICAL FIX: Override is_valid_kyc if document is identified as valid KYC type with high confidence
+        valid_kyc_types = ['PAN', 'Aadhar', 'Passport', 'Driving License', 'Voter ID', 'Bank Statement', 'Utility Bill']
+        document_type = validation_result['document_type']
+        confidence = validation_result['confidence']
+        
+        # If document is a valid KYC type with 100% confidence, mark it as valid_kyc regardless
+        if document_type in valid_kyc_types and confidence >= 0.99:
+            logger.info(f"✅ OVERRIDE: {document_type} identified with {confidence*100:.1f}% confidence - marking as valid KYC")
+            validation_result['is_valid_kyc'] = True
+        
         if not validation_result['is_valid_kyc']:
             logger.warning(f"Invalid KYC document: {validation_result['reason']}")
             
