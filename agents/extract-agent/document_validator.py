@@ -126,7 +126,9 @@ class DocumentValidator:
         # This enables testing with sample documents like IMMIHELP samples
         has_sample_watermark = 'sample' in text_lower or 'immihelp' in text_lower
         has_valid_pan = bool(re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text))
-        has_name = any(word in text_lower for word in ['gupta', 'shah', 'singh', 'kumar', 'sharma'])
+        
+        # Generic name detection: Any capitalized word(s) (2+ letters)
+        has_name = bool(re.search(r'\b[A-Z][a-z]{1,}\s+[A-Z][a-z]{1,}\b', text))
         has_dob = bool(re.search(r'\d{1,2}/\d{1,2}/\d{4}', text))
         
         # SAMPLE documents are ALLOWED if they have valid PAN structure
