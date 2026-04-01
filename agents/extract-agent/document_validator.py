@@ -85,6 +85,58 @@ class DocumentValidator:
             r'bill\s*amount',
         ]
 
+    def _detect_fraud_indicators(self, text: str) -> Dict:
+        """
+        Detect fraud indicators in document
+        Returns dict with fraud status and indicators found
+        """
+        text_lower = text.lower()
+        fraud_indicators = []
+        is_fraudulent = False
+        
+        # CRITICAL: Watermark/Sample document indicators
+        watermark_keywords = [
+            ('sample', 'Sample/Demo document watermark'),
+            ('immihelp', 'Document sharing website watermark'),
+            ('example', 'Example document watermark'),
+            ('template', 'Template document'),
+            ('draft', 'Draft document'),
+            ('test', 'Test document'),
+            ('dummy', 'Dummy/Fake document'),
+            ('fake', 'Fake document'),
+            ('not real', 'Not real indicator'),
+            ('for demonstration', 'Demonstration document'),
+            ('for reference only', 'Reference only'),
+        ]
+        
+        for keyword, description in watermark_keywords:
+            if keyword in text_lower:
+                fraud_indicators.append(description)
+                is_fraudulent = True
+        
+        # Second-level fraud indicators (inconsistencies, suspicious patterns)
+        suspicious_patterns = [
+            (r'copy\s+of\s+original', 'Copy of original (not certified)'),
+            (r'photocopy', 'Photocopy (not original)'),
+            (r'scanned\s+copy', 'Scanned copy'),
+            (r'not\s+for\s+legal\s+purpose', 'Not for legal purpose'),
+        ]
+        
+        for pattern, description in suspicious_patterns:
+            if re.search(pattern, text_lower):
+                fraud_indicators.append(description)
+        
+        # Determine fraud reason
+        fraud_reason = "sample/fake document" if is_fraudulent else ""
+        if fraud_indicators:
+            fraud_reason = " + ".join(fraud_indicators[:2])  # Show top 2 indicators
+        
+        return {
+            "is_fraudulent": is_fraudulent,
+            "fraud_reason": fraud_reason,
+            "indicators": fraud_indicators
+        }
+
     def validate_and_classify(self, text: str) -> Dict:
         """
         Validate if document is a KYC document and classify its type
@@ -101,6 +153,18 @@ class DocumentValidator:
                 "document_type": KYCDocumentType.INVALID.value,
                 "confidence": 0.0,
                 "reason": "Document text too short or empty",
+                "details": []
+            }
+        
+        # CRITICAL: Check for FRAUD INDICATORS first
+        fraud_check = self._detect_fraud_indicators(text)
+        if fraud_check["is_fraudulent"]:
+            return {
+                "is_valid_kyc": False,
+                "document_type": KYCDocumentType.INVALID.value,
+                "confidence": 0.0,
+                "reason": f"🛑 FRAUD DETECTED: {fraud_check['fraud_reason']}",
+                "fraud_indicators": fraud_check["indicators"],
                 "details": []
             }
         
