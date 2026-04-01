@@ -8,6 +8,7 @@ from document_validator import DocumentValidator
 import mimetypes
 import subprocess
 import os
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,6 +17,52 @@ app = FastAPI(title="Extract Agent", version="1.0.0")
 validator = DocumentValidator()
 
 SUPPORTED_FORMATS = ['image/jpeg', 'image/png', 'image/tiff', 'image/webp', 'image/avif', 'image/x-avif']
+
+def detect_photo_in_document(image: Image.Image) -> bool:
+    """
+    Detect if document contains a photo/image area
+    Returns True if a photo is detected
+    
+    Strategy: Check for visual complexity and color variation indicating 
+    presence of a photograph or image (not just text)
+    """
+    try:
+        # Convert image to numpy array for analysis
+        img_array = np.array(image)
+        
+        # For RGB images, check color variation
+        if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
+            # Calculate standard deviation of pixel values
+            # Photos have higher variation than plain text/background
+            std_dev = float(np.std(img_array))
+            
+            # Calculate color range for each channel
+            color_ranges = []
+            for channel in range(min(3, img_array.shape[2])):
+                channel_data = img_array[:, :, channel]
+                color_range = int(np.max(channel_data) - np.min(channel_data))
+                color_ranges.append(color_range)
+            
+            avg_color_range = float(np.mean(color_ranges))
+            
+            # RELAXED THRESHOLDS: Photo detected if there's visual variation
+            # indicating presence of an image (not just blank/text areas)
+            # Use OR logic instead of AND - if either metric is high, there's visual content
+            has_photo = bool((std_dev > 15) or (avg_color_range > 40))
+            
+            logger.info(f"Photo detection - Std Dev: {std_dev:.2f}, Color Range: {avg_color_range:.2f}, Has Photo: {has_photo}")
+            return has_photo
+        else:
+            # Grayscale image - check for variation
+            std_dev = float(np.std(img_array))
+            has_photo = bool(std_dev > 15)
+            logger.info(f"Photo detection (grayscale) - Std Dev: {std_dev:.2f}, Has Photo: {has_photo}")
+            return has_photo
+    
+    except Exception as e:
+        logger.error(f"Photo detection error: {str(e)}")
+        # If detection fails, assume no photo (safer for validation)
+        return False
 
 @app.get("/health")
 async def health():
@@ -144,6 +191,15 @@ async def extract(file: UploadFile = File(...)):
         
         if not validation_result['is_valid_kyc']:
             logger.warning(f"Invalid KYC document: {validation_result['reason']}")
+            
+            # Still detect photo even if document is invalid
+            has_photo = detect_photo_in_document(image)
+            
+            # Check if this is a fraudulent document
+            fraud_detected = validation_result.get('fraud_detected', False)
+            if fraud_detected:
+                logger.error(f"🛑 FRAUDULENT DOCUMENT DETECTED: {validation_result.get('fraud_indicators', [])}")
+            
             return {
                 "status": "invalid_document",
                 "text": text,
@@ -154,11 +210,42 @@ async def extract(file: UploadFile = File(...)):
                 "confidence": validation_result['confidence'],
                 "reason": validation_result['reason'],
                 "all_scores": validation_result['all_scores'],
-                "message": f"This does not appear to be a valid KYC document. {validation_result['reason']}",
+                "has_photo": has_photo,
+                "has_image_data": has_photo,
+                "fraud_detected": fraud_detected,
+                "fraud_indicators": validation_result.get('fraud_indicators', []),
+                "message": f"❌ DOCUMENT REJECTED: {validation_result['reason']}",
                 "timestamp": datetime.now().isoformat()
             }
 
         logger.info(f"Successfully extracted {len(text)} characters from {validation_result['document_type']}")
+        
+        # CRITICAL: Detect if photo is present in the document for PAN cards
+        has_photo = detect_photo_in_document(image)
+        logger.info(f"Photo detection result: {has_photo}")
+        
+        # ENFORCE PHOTO REQUIREMENT FOR PAN CARDS
+        if validation_result['document_type'] == 'PAN':
+            if not has_photo:
+                logger.error(f"PAN card REJECTED: No photo detected in document")
+                return {
+                    "status": "rejected_no_photo",
+                    "text": text,
+                    "filename": file.filename,
+                    "text_length": len(text),
+                    "is_valid_kyc": False,  # REJECT
+                    "document_type": validation_result['document_type'],
+                    "confidence": validation_result['confidence'],
+                    "reason": "PAN card rejected: No photo/image detected",
+                    "extracted_patterns": validation_result['extracted_patterns'],
+                    "all_scores": validation_result['all_scores'],
+                    "has_photo": False,
+                    "has_image_data": False,
+                    "message": "❌ PAN card REJECTED: Missing photo/image. Valid PAN cards must contain a photo.",
+                    "timestamp": datetime.now().isoformat()
+                }
+        
+        # For PAN cards, include photo detection info
         return {
             "status": "success",
             "text": text,
@@ -170,6 +257,8 @@ async def extract(file: UploadFile = File(...)):
             "reason": validation_result['reason'],
             "extracted_patterns": validation_result['extracted_patterns'],
             "all_scores": validation_result['all_scores'],
+            "has_photo": has_photo,  # Photo detection result
+            "has_image_data": has_photo,  # For compatibility
             "timestamp": datetime.now().isoformat()
         }
 

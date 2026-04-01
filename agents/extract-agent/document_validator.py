@@ -85,9 +85,85 @@ class DocumentValidator:
             r'bill\s*amount',
         ]
 
+    def _detect_fraud_indicators(self, text: str) -> Dict:
+        """
+        Detect fraud indicators in document
+        STRICTLY rejects:
+        1. Documents with watermarks (SAMPLE, IMMIHELP, logos, external text overlays)
+        2. Photocopied or tampered documents
+        3. Template/demo documents
+        """
+        text_lower = text.lower()
+        fraud_indicators = []
+        is_fraudulent = False
+        
+        # CRITICAL FRAUD INDICATORS - ALWAYS REJECT
+        # 1. Watermark/Overlay detection
+        watermark_keywords = [
+            ('sample', 'Watermarked as SAMPLE'),
+            ('immihelp', 'IMMIHELP.COM watermark - External website overlay'),
+            ('sample - immihelp', 'SAMPLE document from IMMIHELP'),
+            ('watermark', 'Document contains watermark'),
+            ('© copyright', 'Copyright/watermark overlay'),
+            ('for demonstration', 'For demonstration only'),
+            ('not for legal', 'Not for legal use'),
+            ('dummy', 'Dummy/placeholder document'),
+            ('template', 'Template document'),
+        ]
+        
+        # 2. Photocopied/Tampered documents
+        photocopied_keywords = [
+            ('photocopied', 'Photocopied document'),
+            ('photocopy', 'Photocopy (not original)'),
+            ('copy', 'Copy of original'),
+            ('not original', 'Not original document'),
+            ('duplicate', 'Duplicate/copy'),
+            ('certified copy', 'Certified copy (indicates original is elsewhere)'),
+        ]
+        
+        # 3. Fake/invalid documents
+        fake_keywords = [
+            ('fake', 'Explicitly marked as fake'),
+            ('not real', 'Marked as not real'),
+            ('invalid', 'Invalid document'),
+            ('cancelled', 'Cancelled document'),
+            ('expired', 'Expired document'),  # For ID documents
+        ]
+        
+        # Check all critical indicators
+        for keyword, description in watermark_keywords + photocopied_keywords + fake_keywords:
+            if keyword in text_lower:
+                fraud_indicators.append(description)
+                is_fraudulent = True
+        
+        # Additional fraud patterns
+        fraud_patterns = [
+            (r'sample\s*[-]?\s*immihelp|immihelp\.com', 'Website watermark overlay detected'),
+            (r'for\s+demonstration\s+only', 'Demonstration document'),
+            (r'not\s+for\s+legal\s+use', 'Not for legal use'),
+            (r'test\s+(document|image)', 'Test/sample document'),
+        ]
+        
+        for pattern, description in fraud_patterns:
+            if re.search(pattern, text_lower):
+                if description not in fraud_indicators:
+                    fraud_indicators.append(description)
+                    is_fraudulent = True
+        
+        fraud_reason = " | ".join(fraud_indicators[:3]) if fraud_indicators else ""
+        
+        return {
+            "is_fraudulent": is_fraudulent,
+            "fraud_reason": fraud_reason,
+            "indicators": fraud_indicators,
+            "is_sample": 'sample' in text_lower or 'immihelp' in text_lower,
+            "note": "REJECTED: Document contains watermarks or is not original" if is_fraudulent else None
+        }
+
     def validate_and_classify(self, text: str) -> Dict:
         """
         Validate if document is a KYC document and classify its type
+        Supports multiple KYC document types with appropriate validation
         
         Args:
             text: Extracted text from document
@@ -104,33 +180,26 @@ class DocumentValidator:
                 "details": []
             }
         
-        # Normalize text for matching - convert newlines and extra spaces to single spaces
-        text_lower = text.lower()
-        # First, normalize whitespace (including newlines, tabs, etc.) to single spaces
-        text_normalized = re.sub(r'\s+', ' ', text_lower)  # Replace multiple whitespace chars with single space
-        text_normalized = re.sub(r'[^a-z0-9\s]', ' ', text_normalized)  # Remove special characters
-        text_normalized = re.sub(r'\s+', ' ', text_normalized)  # Clean up again after removing special chars
-        
         # Check each document type
         scores = {}
         details = {}
         
-        scores[KYCDocumentType.AADHAR] = self._check_aadhar(text, text_lower, text_normalized)
-        scores[KYCDocumentType.PAN] = self._check_pan(text, text_lower, text_normalized)
-        scores[KYCDocumentType.PASSPORT] = self._check_passport(text, text_lower, text_normalized)
-        scores[KYCDocumentType.DRIVING_LICENSE] = self._check_driving_license(text, text_lower, text_normalized)
-        scores[KYCDocumentType.VOTER_ID] = self._check_voter_id(text, text_lower, text_normalized)
-        scores[KYCDocumentType.BANK_STATEMENT] = self._check_bank_statement(text, text_lower, text_normalized)
-        scores[KYCDocumentType.UTILITY_BILL] = self._check_utility_bill(text, text_lower, text_normalized)
+        scores[KYCDocumentType.AADHAR] = self._check_aadhar(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.PAN] = self._check_pan(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.PASSPORT] = self._check_passport(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.DRIVING_LICENSE] = self._check_driving_license(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.VOTER_ID] = self._check_voter_id(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.BANK_STATEMENT] = self._check_bank_statement(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.UTILITY_BILL] = self._check_utility_bill(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
         
         # Find best match
         best_type = max(scores, key=scores.get)
         best_score = scores[best_type]
         
         # Special logic: If Income Tax Department is found, ALWAYS prioritize PAN
-        # Support OCR variations (use normalized text for better detection)
-        income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
-        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
+        text_normalized = re.sub(r'\s+', ' ', text.lower())
+        income_tax_keywords = ['income tax', 'income-tax', 'incometax']
+        dept_keywords = ['department', 'dept', 'govt of india', 'government of india']
         
         has_income_tax = any(keyword in text_normalized for keyword in income_tax_keywords)
         has_dept = any(keyword in text_normalized for keyword in dept_keywords)
@@ -159,22 +228,31 @@ class DocumentValidator:
             KYCDocumentType.UTILITY_BILL,
         ]
         
-        # Special handling for different document types - thresholds are confidence-based
-        # Lower thresholds allow fuzzy matching, higher confidence = stronger evidence
+        # CRITICAL: Check for fraud indicators FIRST
+        # If document is fraudulent (watermarked, fake, etc), REJECT immediately
+        fraud_check = self._detect_fraud_indicators(text)
+        if fraud_check['is_fraudulent']:
+            # Document is fraudulent - REJECT regardless of document type or score
+            return {
+                "is_valid_kyc": False,
+                "document_type": best_type.value,
+                "confidence": round(best_score, 2),
+                "reason": f"DOCUMENT REJECTED: {fraud_check['fraud_reason']} - Fraudulent or non-original document",
+                "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
+                "extracted_patterns": self._extract_key_patterns(text, best_type),
+                "fraud_detected": True,
+                "fraud_indicators": fraud_check['indicators']
+            }
+        
+        # Special handling for PAN documents - they're primary KYC documents
+        # Use lower threshold (0.20) for PAN since it's a critical document
         if best_type == KYCDocumentType.PAN:
-            # PAN: Lower threshold (0.20) - critical document
             is_valid = best_score > 0.20
-        elif best_type == KYCDocumentType.AADHAR:
-            # Aadhar: Allow from 0.30 confidence (40% is acceptable)
-            # Even lower confidence Aadhar should be accepted but flagged
-            is_valid = best_score > 0.25
         else:
-            # Other KYC documents: require 0.3+ confidence
             is_valid = best_type in kyc_document_types and best_score > 0.3
         
-        # CRITICAL: Only mark as UNKNOWN if score is VERY LOW (< 0.1) OR type not in valid list
-        # Don't mark valid document types as Unknown just because confidence is low
-        if best_score < 0.1 and best_type not in kyc_document_types:
+        # If score is very low, mark as Unknown instead of a specific type
+        if best_score < 0.1:
             best_type = KYCDocumentType.UNKNOWN
         
         result = {
@@ -183,10 +261,93 @@ class DocumentValidator:
             "confidence": round(best_score, 2),
             "reason": self._get_reason(best_type, best_score, is_valid),
             "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
-            "extracted_patterns": self._extract_key_patterns(text, best_type)
+            "extracted_patterns": self._extract_key_patterns(text, best_type),
+            "fraud_detected": False
         }
         
         return result
+    
+    def _validate_pan_strict(self, text: str) -> Dict:
+        """
+        STRICT validation: Only approve PAN with ALL mandatory elements
+        Required elements:
+        1. Income Tax Department / Government of India header
+        2. Name (person's name)
+        3. Father's name
+        4. Date of birth (DD/MM/YYYY)
+        5. PAN number (XXXXX0000X format)
+        6. Signature area
+        """
+        text_lower = text.lower()
+        text_normalized = re.sub(r'\s+', ' ', text_lower)
+        
+        required_elements = {}
+        failures = []
+        
+        # 1. Check Income Tax Department header (CRITICAL)
+        has_income_tax = any(keyword in text_normalized for keyword in 
+                            ['income tax', 'income-tax', 'incometax'])
+        has_govt = any(keyword in text_normalized for keyword in 
+                      ['govt of india', 'government of india', 'govt of india'])
+        
+        if not (has_income_tax and has_govt):
+            failures.append("Missing Income Tax Department / Government of India header")
+        else:
+            required_elements["header"] = True
+        
+        # 2. Check for name (at least 2 words, capitalized)
+        # Pattern: Word(s) that could be a name
+        name_pattern = r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b'
+        has_name = bool(re.search(name_pattern, text))
+        
+        if not has_name:
+            failures.append("Missing person's name")
+        else:
+            required_elements["name"] = True
+        
+        # 3. Check for father's name (usually preceded by "Father" or "S/O")
+        has_father = bool(re.search(r'(?:father|s/o|son of)', text_lower))
+        
+        if not has_father:
+            failures.append("Missing father's name")
+        else:
+            required_elements["father"] = True
+        
+        # 4. Check for date of birth (DD/MM/YYYY or D/M/YY format)
+        has_dob = bool(re.search(r'\d{1,2}/\d{1,2}/\d{2,4}', text))
+        
+        if not has_dob:
+            failures.append("Missing date of birth")
+        else:
+            required_elements["dob"] = True
+        
+        # 5. Check for PAN number (XXXXX0000X)
+        has_pan = bool(re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text))
+        
+        if not has_pan:
+            failures.append("Missing PAN number (XXXXX0000X format)")
+        else:
+            required_elements["pan"] = True
+        
+        # 6. Check for signature (usually mentioned in document)
+        has_signature = 'signature' in text_lower or 'sign' in text_lower
+        
+        if not has_signature:
+            failures.append("Missing signature")
+        else:
+            required_elements["signature"] = True
+        
+        # Calculate confidence based on elements found
+        total_required = 6
+        elements_found = len(required_elements)
+        confidence = elements_found / total_required
+        
+        return {
+            "is_valid": len(failures) == 0,
+            "confidence": confidence,
+            "details": list(required_elements.keys()),
+            "failure_reason": " | ".join(failures) if failures else ""
+        }
     
     def _check_aadhar(self, text: str, text_lower: str, text_normalized: str) -> float:
         """Check for Aadhar document characteristics"""
@@ -222,21 +383,17 @@ class DocumentValidator:
         # CRITICAL: Check for Income Tax Department header - STRONGEST indicator
         # Support variations due to OCR (use text_normalized to handle newlines and extra spaces)
         income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
-        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india', 'govt india']
-
+        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
+        
         # Use normalized text which handles newlines and extra spaces
         has_income_tax = any(keyword in text_normalized for keyword in income_tax_keywords)
         has_dept = any(keyword in text_normalized for keyword in dept_keywords)
         
         if has_income_tax and has_dept:
-            score += 0.95  # ABSOLUTE strongest indicator - Income Tax Department + Govt = PAN
+            score += 0.85  # VERY STRONG indicator - Income Tax Department clearly indicates PAN
         elif has_income_tax:
-            score += 0.80  # Very strong - Income Tax mention almost always means PAN
+            score += 0.65  # Strong indicator even without explicit "department"
         
-        # Check for "Permanent Account Number" - STRONGEST explicit indicator
-        if 'permanent account number' in text_lower or 'permanent account' in text_lower:
-            score += 0.90  # Explicit PAN indicator
-
         # Check for PAN format XXXXX0000X - VERY HIGH WEIGHT
         # Also support formats with spaces or special chars that OCR might introduce
         pan_formats = [
@@ -246,21 +403,31 @@ class DocumentValidator:
         ]
         
         if any(pan_formats):
-            score += 0.80  # Very high weight for PAN format
-
+            score += 0.75  # Increased weight for PAN format
+        
         # Check for explicit PAN keywords - HIGH WEIGHT
-        explicit_pan_keywords = ['pan card', 'pan number', 'pan:', 'p.a.n', 'apjpb', 'assessement', 'assessor code']
+        explicit_pan_keywords = ['pan card', 'pan number', 'pan:', 'permanent account number', 'p.a.n', 'permanent account']
         explicit_matches = sum(1 for keyword in explicit_pan_keywords if keyword in text_lower)
-        score += min(explicit_matches * 0.30, 0.60)
-
+        score += min(explicit_matches * 0.35, 0.65)
+        
         # Check for common PAN fields - these are very indicative
-        pan_specific_fields = ['date of birth', 'father', 'name', 'assessement year', 'dob', 'signature', 'assessor code', 'dob']
+        pan_specific_fields = ['date of birth', 'father', 'name', 'assessement year', 'dob', 'signature', 'assessor code']
         field_matches = sum(1 for field in pan_specific_fields if field in text_lower)
-        score += min(field_matches * 0.12, 0.25)
-
-        # Strong reject if this is clearly another document type
-        if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'aadhaar', 'uid', 'unique id', 'voter id', 'election commission', 'epic']):
-            score *= 0.5  # Penalize if conflicting keywords present
+        score += min(field_matches * 0.15, 0.3)
+        
+        # Additional PAN indicators from the actual card layout
+        if any(keyword in text_lower for keyword in ['govt', 'sarkaar', 'भारत', 'government']):
+            score += 0.1
+        
+        # CRITICAL: REJECT if fraud/watermarks detected
+        fraud_check = self._detect_fraud_indicators(text)
+        if fraud_check['is_fraudulent']:
+            # Watermarked, tampered, or non-original documents are REJECTED
+            return 0.0
+        
+        # Strong reject if obviously not PAN (but allow combined documents)
+        if any(keyword in text_lower for keyword in ['valid upto', 'vehicle class', 'driving license', 'election commission', 'voter id']):
+            score *= 0.5  # Reduced penalty - could be combined doc
         
         return min(score, 1.0)
     
@@ -343,28 +510,22 @@ class DocumentValidator:
         score = 0.0
         
         # CRITICAL: If this is clearly a PAN document, return 0 immediately
-        # Check multiple variations of PAN indicators
+        # Support variations due to OCR (use normalized text for better detection)
         income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
-        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india', 'govt india']
+        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
         
-        # If Income Tax Department header is present, definitely PAN not bank statement
         if any(keyword in text_normalized for keyword in income_tax_keywords) and \
            any(keyword in text_normalized for keyword in dept_keywords):
-            return 0.0  # Absolutely NOT a bank statement
+            return 0.0  # Definitely a PAN document, not a bank statement
         
-        # If Permanent Account Number is mentioned, it's definitely PAN
-        if 'permanent account number' in text_lower or 'permanent account' in text_lower:
-            return 0.0
-        
-        # If it has PAN format XXXXX0000X AND Income Tax keywords, it's definitely a PAN
         if re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text):
+            # If it has PAN format AND Income Tax keywords, it's definitely a PAN
             if any(keyword in text_normalized for keyword in income_tax_keywords) or \
-               'permanent account number' in text_lower or \
-               'pan' in text_lower:
-                return 0.0  # PAN format + context = definitely PAN, not bank
+               'permanent account number' in text_lower:
+                return 0.0
         
         # If document has PAN card layout indicators, return 0
-        if any(keyword in text_lower for keyword in ['permanent account number', 'pan number', 'pan card', 'pan:', 'p.a.n']):
+        if any(keyword in text_lower for keyword in ['permanent account number', 'pan number', 'pan card']):
             return 0.0
         
         # Check for strong bank statement keywords
