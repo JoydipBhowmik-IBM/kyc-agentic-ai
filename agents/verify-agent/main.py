@@ -301,6 +301,26 @@ async def verify(data: Dict[str, Any]):
         logger.info("VERIFY AGENT: Multi-Source Cross-Verification Initiated")
         logger.info("=" * 60)
 
+        # CRITICAL: Reject unknown document types directly
+        if data.get("document_type") == "Unknown":
+            logger.warning("❌ Document type identified as 'Unknown' - cannot process unknown documents")
+            result = {
+                "status": "success",
+                "verified": False,
+                "confidence_score": 0.0,
+                "validations": {"document_type": "Unknown"},
+                "cross_verifications": {},
+                "is_valid_kyc": False,
+                "original_data": data,
+                "timestamp": datetime.now().isoformat(),
+                "reason": "Document type is 'Unknown' - cannot process unknown or invalid documents. Please submit a valid KYC document (PAN, Aadhar, Passport, Driving License, Voter ID, Bank Statement, or Utility Bill)."
+            }
+            if "document_type" in data:
+                result["document_type"] = data.get("document_type")
+            if "reason" in data:
+                result["reason"] = data.get("reason")
+            return result
+
         # CRITICAL: If extract agent explicitly marked this as NOT a valid KYC document, reject
         if "is_valid_kyc" in data and data.get("is_valid_kyc") is False:
             logger.warning("❌ Document explicitly failed KYC validation from extract agent - rejecting")
