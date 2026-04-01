@@ -3,13 +3,6 @@ version: '3.8'
 # KYC/AML Agentic AI - Docker Compose Configuration
 # Updated: April 1, 2026
 
-networks:
-  kyc-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-
 volumes:
   kyc-vector-db:
     driver: local
@@ -23,14 +16,11 @@ services:
     build:
       context: ./agents/extract-agent
       dockerfile: Dockerfile
-    container_name: kyc-extract-agent
     restart: unless-stopped
     ports:
-      - "${EXTRACT_AGENT_PORT:-8001}:8000"
+      - "${EXTRACT_AGENT_PORT:-8007}:8000"
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -47,14 +37,11 @@ services:
     build:
       context: ./agents/verify-agent
       dockerfile: Dockerfile
-    container_name: kyc-verify-agent
     restart: unless-stopped
     ports:
-      - "${VERIFY_AGENT_PORT:-8002}:8000"
+      - "${VERIFY_AGENT_PORT:-8008}:8000"
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -71,14 +58,11 @@ services:
     build:
       context: ./agents/risk-agent
       dockerfile: Dockerfile
-    container_name: kyc-risk-agent
     restart: unless-stopped
     ports:
       - "${RISK_AGENT_PORT:-8004}:8000"
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -95,14 +79,11 @@ services:
     build:
       context: ./agents/decision-agent
       dockerfile: Dockerfile
-    container_name: kyc-decision-agent
     restart: unless-stopped
     ports:
       - "${DECISION_AGENT_PORT:-8005}:8000"
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -118,7 +99,6 @@ services:
   # Vector DB Init - Runs once to initialize data
   vector-db-init:
     image: python:3.11-slim
-    container_name: kyc-vector-db-init
     working_dir: /app
     command: >
       bash -c "
@@ -134,8 +114,11 @@ services:
       - ./init_vector_db_simple.py:/app/init_vector_db_simple.py:ro
       - ./kyc_vector_db:/app/kyc_vector_db
       - kyc-vector-db:/data/kyc_vector_db
-    networks:
-      - kyc-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: "no"
 
   # MCP Server - RAG + Vector DB Tools
@@ -143,7 +126,6 @@ services:
     build:
       context: ./mcp-server
       dockerfile: Dockerfile
-    container_name: kyc-mcp-server
     restart: unless-stopped
     ports:
       - "${MCP_SERVER_PORT:-8020}:8020"
@@ -153,8 +135,6 @@ services:
     volumes:
       - kyc-vector-db:/data/kyc_vector_db
       - ./kyc_vector_db:/app/kyc_vector_db
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -172,7 +152,6 @@ services:
     build:
       context: ./agents/reason-agent
       dockerfile: Dockerfile
-    container_name: kyc-reason-agent
     restart: unless-stopped
     ports:
       - "${REASON_AGENT_PORT:-8003}:8000"
@@ -181,8 +160,6 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       LLM_MODEL: ${LLM_MODEL:-mistral}
       MCP_SERVER_URL: http://mcp-server:8020
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -200,7 +177,6 @@ services:
     build:
       context: ./orchestration-service
       dockerfile: Dockerfile
-    container_name: kyc-orchestration
     restart: unless-stopped
     ports:
       - "${ORCHESTRATION_PORT:-8010}:8010"
@@ -212,8 +188,6 @@ services:
       RISK_AGENT_URL: http://risk-agent:8000
       DECISION_AGENT_URL: http://decision-agent:8000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -231,15 +205,12 @@ services:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
-    container_name: kyc-api-gateway
     restart: unless-stopped
     ports:
       - "${API_GATEWAY_PORT:-8000}:8000"
     environment:
       ORCHESTRATION_SERVICE_URL: http://orchestration-service:8010
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -257,15 +228,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: kyc-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       API_GATEWAY_URL: ${API_GATEWAY_URL:-http://localhost:8000}
       NODE_ENV: ${NODE_ENV:-production}
-    networks:
-      - kyc-network
     logging:
       driver: "json-file"
       options:
@@ -278,4 +246,3 @@ services:
       retries: 3
       start_period: 30s
 
-# ...existing code...
