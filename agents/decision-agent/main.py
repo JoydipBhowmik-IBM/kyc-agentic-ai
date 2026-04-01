@@ -112,7 +112,6 @@ class DecisionEngine:
         risk_score = data.get("risk_score", 0.5)
         risk_level = data.get("risk_level", "MEDIUM")
         verified = data.get("verified", False)
-        is_valid_kyc = data.get("is_valid_kyc", False)
         
         # Extract intelligence from data
         factors = data.get("intelligence_metrics", {})
@@ -121,13 +120,12 @@ class DecisionEngine:
             "risk_metrics": {
                 "score": risk_score,
                 "level": risk_level,
-                "verified": verified,
-                "is_valid_kyc": is_valid_kyc
+                "verified": verified
             },
             "risk_indicators": self.extract_risk_indicators(data),
             "mitigating_factors": self.extract_mitigating_factors(data),
             "regulatory_concerns": self.extract_regulatory_concerns(data),
-            "overall_risk_assessment": self.assess_overall_risk(risk_score, verified, is_valid_kyc)
+            "overall_risk_assessment": self.assess_overall_risk(risk_score, verified)
         }
         
         return analysis
@@ -156,13 +154,7 @@ class DecisionEngine:
         
         if data.get("verified", False):
             factors.append("✓ Document verification passed")
-        
-        if data.get("is_valid_kyc", False):
-            factors.append("✓ Valid KYC document type identified")
-        
-        if data.get("confidence", 0) >= 0.9:
-            factors.append("✓ High document identification confidence")
-        
+
         if data.get("confidence_score", 0) > 0.8:
             factors.append("✓ High extraction confidence")
         
@@ -185,17 +177,8 @@ class DecisionEngine:
         
         return concerns
     
-    def assess_overall_risk(self, risk_score: float, verified: bool, is_valid_kyc: bool = False) -> str:
+    def assess_overall_risk(self, risk_score: float, verified: bool) -> str:
         """Provide overall risk assessment"""
-        # If it's a valid KYC document that passed verification, risk is reduced
-        if is_valid_kyc and verified:
-            if risk_score < 0.2:
-                return "MINIMAL RISK - Valid KYC document with low regulatory concern"
-            elif risk_score < 0.33:
-                return "LOW RISK - Valid KYC document, standard controls sufficient"
-            elif risk_score < 0.5:
-                return "LOW-MEDIUM RISK - Valid KYC document, enhanced controls recommended"
-        
         if not verified:
             return "UNVERIFIED - Cannot proceed"
         elif risk_score < 0.2:
@@ -214,23 +197,27 @@ class DecisionEngine:
     def make_decision(self, risk_score: float, risk_level: str, verified: bool, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Make final KYC decision based on comprehensive analysis
-        
+
         REASONING-DRIVEN: Considers conflict analysis from Reason Agent
         """
         
+        # Get confidence score with fallback for field name variations
+        confidence_score = data.get("confidence_score", 0.0)
+        if confidence_score == 0.0:
+            confidence_score = data.get("confidence", 0.0)
         # Extract is_valid_kyc flag from data
         # Check multiple possible sources/formats
         is_valid_kyc = data.get("is_valid_kyc", False)
         document_type = data.get("document_type", "Unknown")
         document_confidence = data.get("confidence", 0.0)
-        
+
         # ═════════════════════════════════════════════════════════════
         # NEW: Check conflict analysis from Reason Agent
         # ═════════════════════════════════════════════════════════════
         conflict_analysis = data.get("conflict_analysis")
         conflicts_detected = data.get("conflicts_detected", False)
         reasoning_applied = data.get("analysis_pipeline", {}).get("reasoning_applied", False)
-        
+
         if conflicts_detected and conflict_analysis:
             logger.info(f"\n🧠 REASONING-DRIVEN DECISION MAKING")
             logger.info(f"   Conflicts detected: {conflicts_detected}")
@@ -238,12 +225,12 @@ class DecisionEngine:
             logger.info(f"   Reason Agent recommendation: {conflict_analysis.get('recommendation')}")
             logger.info(f"   Fraud risk assessment: {conflict_analysis.get('fraud_risk')}")
             logger.info(f"   Confidence: {conflict_analysis.get('confidence')}")
-            
+
             # If Reason Agent found conflicts but low fraud risk, don't auto-reject
             if conflict_analysis.get('fraud_risk') in ['low', 'LOW']:
                 logger.info(f"   ✓ Fraud risk is LOW - Not auto-rejecting despite conflicts")
                 logger.info(f"   ✓ Using Reason Agent recommendation: {conflict_analysis.get('recommendation')}")
-                
+
                 # Use the Reason Agent's recommendation
                 reason_recommendation = conflict_analysis.get('recommendation', 'ESCALATE').upper()
                 if reason_recommendation == 'APPROVE':
@@ -252,19 +239,19 @@ class DecisionEngine:
                     rule = self.DECISION_RULES.get("low_medium_risk", self.DECISION_RULES["medium_risk"])
                 else:  # ESCALATE
                     rule = self.DECISION_RULES.get("medium_risk", self.DECISION_RULES["medium_risk"])
-                
+
                 logger.info(f"   ✓ Decision rule applied: {rule['decision']}")
                 return self.format_decision(rule, risk_score)
-        
+
         # Handle string representations of boolean
         if isinstance(is_valid_kyc, str):
             is_valid_kyc = is_valid_kyc.lower() in ('true', '1', 'yes')
-        
+
         logger.info(f"Decision making - is_valid_kyc: {is_valid_kyc} (type: {type(is_valid_kyc).__name__}), document_type: {document_type}, confidence: {document_confidence}")
-        
+
         # VALID KYC DOCUMENT TYPES
         valid_kyc_types = ['PAN', 'Aadhar', 'Passport', 'Driving License', 'Voter ID', 'Bank Statement', 'Utility Bill']
-        
+
         # ═════════════════════════════════════════════════════════════
         # CRITICAL FIX: If document is a valid KYC type with high confidence, APPROVE
         # ═════════════════════════════════════════════════════════════
@@ -277,13 +264,26 @@ class DecisionEngine:
                 "regulatory_action": "APPROVE"
             }
             return self.format_decision(rule, risk_score)
-        
+
         # CRITICAL: Explicit rejection for Unknown document types
         if document_type == "Unknown" or document_type == "Invalid":
             rule = self.DECISION_RULES["verification_failed"]
             logger.warning(f"🚫 REJECTING: Document type is '{document_type}' - cannot process unknown document types")
             return self.format_decision(rule, risk_score)
-        
+
+        logger.info(f"make_decision - verified: {verified}, confidence_score: {confidence_score:.2%}")
+
+        # Primary check: Verification status WITH confidence override
+        # If confidence is high (>=0.8), allow conditional approval even if verification failed on minor check
+        if not verified:
+            if confidence_score >= 0.8:
+                logger.info(f"Verification failed but confidence is high ({confidence_score:.2%}), allowing conditional review")
+                rule = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
+                return self.format_decision(rule, risk_score)
+            else:
+                logger.warning(f"Verification failed and confidence is low ({confidence_score:.2%}), rejecting")
+                rule = self.DECISION_RULES["verification_failed"]
+                return self.format_decision(rule, risk_score)
         # Primary check: If document is NOT a valid KYC type AND not verified, reject
         # But if it IS a valid KYC document type, we proceed with risk-based decision
         # IMPORTANT: If is_valid_kyc=True, the document passed KYC classification, so we proceed based on risk
@@ -293,7 +293,7 @@ class DecisionEngine:
             return self.format_decision(rule, risk_score)
         elif not verified and is_valid_kyc:
             logger.info(f"Proceeding with risk-based decision: verified={verified}, is_valid_kyc={is_valid_kyc}, risk_level={risk_level}")
-        
+
         # Map risk level to decision rule
         rule_key = risk_level.lower() if risk_level else "medium_risk"
         
@@ -349,6 +349,11 @@ class DecisionEngine:
         is_valid_kyc = risk_metrics.get("is_valid_kyc", False)
         document_type = risk_metrics.get("document_type", "Unknown")
 
+        # Get confidence score with fallback
+        confidence_score = risk_metrics.get("confidence_score", 0.0)
+        if confidence_score == 0.0:
+            confidence_score = risk_metrics.get("confidence", 0.0)
+
         # CRITICAL: Explicit rejection for Unknown document types
         if document_type == "Unknown" or document_type == "Invalid":
             decision = {
@@ -360,6 +365,12 @@ class DecisionEngine:
         # If document is NOT a valid KYC type AND not verified, reject
         elif not verified and not is_valid_kyc:
             decision = self.DECISION_RULES["verification_failed"]
+        # Handle verification with confidence override
+        if not verified:
+            if confidence_score >= 0.8:
+                decision = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
+            else:
+                decision = self.DECISION_RULES["verification_failed"]
         elif risk_score >= HIGH_RISK_THRESHOLD:
             decision = self.DECISION_RULES["critical_risk"]
         elif risk_score >= MEDIUM_HIGH_THRESHOLD:
@@ -407,14 +418,20 @@ async def decision(data: Dict[str, Any]):
         document_confidence = data.get("confidence", 0.0)
         
         logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}, is_valid_kyc: {is_valid_kyc}, document_type: {document_type}, confidence: {document_confidence}")
-        
+        # Handle both "confidence" and "confidence_score" field names
+        confidence_score = data.get("confidence_score", 0.0)
+        if confidence_score == 0.0:
+            # Fallback: check if "confidence" field exists
+            confidence_score = data.get("confidence", 0.0)
+        logger.info(f"Input - risk_score: {risk_score}, risk_level: {risk_level}, verified: {verified}, confidence_score: {confidence_score:.2%}")
+
         # VALID KYC DOCUMENT TYPES (from extract-agent)
         valid_kyc_types = ['PAN', 'Aadhar', 'Passport', 'Driving License', 'Voter ID', 'Bank Statement', 'Utility Bill']
-        
+
         # ═════════════════════════════════════════════════════════════
         # CRITICAL LOGIC: Handle document identification
         # ═════════════════════════════════════════════════════════════
-        
+
         # Case 1: Document is identified as a VALID KYC type with high confidence (100%)
         # APPROVE immediately - do not reject
         if document_type in valid_kyc_types and document_confidence >= 0.99:
@@ -423,31 +440,31 @@ async def decision(data: Dict[str, Any]):
                 "status": "success",
                 "decision": "APPROVED",
                 "reason": f"Valid KYC document identified as {document_type} with {document_confidence*100:.1f}% confidence. Document meets KYC requirements.",
-                
+
                 "confidence_scores": {
                     "decision_confidence": document_confidence,
                     "document_identification_confidence": document_confidence,
                     "risk_adjusted_confidence": max(0.0, document_confidence - (risk_score * 0.1))
                 },
-                
+
                 "confidence": document_confidence,
                 "document_confidence": document_confidence,
-                
+
                 "regulatory_action": "APPROVE",
                 "requires_human_review": False,
-                
+
                 "risk_score": risk_score,
                 "risk_level": risk_level,
                 "document_type": document_type,
                 "is_valid_kyc": True,
-                
+
                 "analysis": {
                     "risk_factors_summary": [],
                     "mitigating_factors": [f"✓ Valid {document_type} identified with {document_confidence*100:.1f}% confidence"],
                     "regulatory_concerns": [],
                     "overall_assessment": f"APPROVAL - {document_type} is a valid KYC document with high confidence identification"
                 },
-                
+
                 "input_metrics": {
                     "risk_score": risk_score,
                     "risk_level": risk_level,
@@ -457,7 +474,7 @@ async def decision(data: Dict[str, Any]):
                 }
             }
             return approval_result
-        
+
         # Case 2: Document type is truly Unknown or Invalid - REJECT
         # CRITICAL FIX: Explicit rejection for Unknown document types
         if document_type == "Unknown" or document_type == "Invalid":
@@ -466,31 +483,31 @@ async def decision(data: Dict[str, Any]):
                 "status": "success",
                 "decision": "REJECTED",
                 "reason": f"Document type is '{document_type}' - cannot process unknown or invalid documents. Please submit a valid KYC document (PAN, Aadhar, Passport, Driving License, Voter ID, Bank Statement, or Utility Bill).",
-                
+
                 "confidence_scores": {
                     "decision_confidence": 1.0,
                     "document_identification_confidence": document_confidence,
                     "risk_adjusted_confidence": 1.0
                 },
-                
+
                 "confidence": 1.0,
                 "document_confidence": document_confidence,
-                
+
                 "regulatory_action": "REJECT",
                 "requires_human_review": False,
-                
+
                 "risk_score": risk_score,
                 "risk_level": risk_level,
                 "document_type": document_type,
                 "is_valid_kyc": False,
-                
+
                 "analysis": {
                     "risk_factors_summary": ["Unknown/Invalid document type - cannot verify"],
                     "mitigating_factors": [],
                     "regulatory_concerns": ["Document type not recognized - rejected for compliance"],
                     "overall_assessment": f"REJECTION - Document type '{document_type}' is not a supported KYC document"
                 },
-                
+
                 "input_metrics": {
                     "risk_score": risk_score,
                     "risk_level": risk_level,
@@ -498,14 +515,14 @@ async def decision(data: Dict[str, Any]):
                     "extraction_confidence_score": data.get("confidence_score", 0.0),
                     "document_identification_confidence": document_confidence
                 },
-                
+
                 "decision_version": "2.0.0 (Advanced)",
                 "timestamp": datetime.now().isoformat()
             }
-            
+
             logger.error(f"✗ DECISION: REJECTED | Document: {document_type} | Confidence: 100%")
             return rejection_result
-        
+
         # If document is a valid type (e.g., Aadhar, PAN, etc.) but confidence is low (30-50%)
         # AND is_valid_kyc is True, we should proceed but note the low confidence
         if is_valid_kyc and document_confidence < 0.5:
@@ -513,17 +530,13 @@ async def decision(data: Dict[str, Any]):
             # Add extra risk adjustment for low confidence
             risk_score = min(risk_score + 0.1, 1.0)  # Increase risk slightly for low confidence
             logger.info(f"Risk score adjusted to {risk_score} due to low document confidence")
-        
+
         # Log all data keys for debugging
         logger.info(f"All input data keys: {list(data.keys())}")
-        
-        # IMPORTANT: If extract agent identified this as a valid KYC document but verify agent couldn't verify,
-        # we should still allow it to proceed with caution (not auto-reject)
-        if not verified and is_valid_kyc:
-            logger.info("Document is valid KYC type but verification incomplete - will be reviewed based on risk score")
-        
-        if not verified and not is_valid_kyc:
-            logger.warning("⚠️  WARNING: Document failed KYC validation - will be rejected")
+        if not verified:
+            logger.warning(f"⚠️  WARNING: verified field is False - confidence_score is {confidence_score:.2%}")
+            if confidence_score >= 0.8:
+                logger.info("✓ Confidence override will be applied (confidence >= 80%)")
         
         # Perform comprehensive risk analysis
         risk_analysis = decision_engine.analyze_risk_factors(data)
@@ -541,24 +554,24 @@ async def decision(data: Dict[str, Any]):
         
         # Extract document identification confidence from extract agent
         document_identification_confidence = data.get("confidence", 0.0)
-        
+
         # Build comprehensive result
         result = {
             "status": "success",
             "decision": decision_result["decision"],
             "reason": decision_result["reason"],
-            
+
             # CLARITY: Separate decision confidence from document confidence
             "confidence_scores": {
                 "decision_confidence": round(decision_result["confidence"], 3),
                 "document_identification_confidence": round(document_identification_confidence, 3),
                 "risk_adjusted_confidence": round(decision_result["risk_adjusted_confidence"], 3)
             },
-            
+
             # For backward compatibility, include main confidence
             "confidence": round(decision_result["confidence"], 3),
             "document_confidence": round(document_identification_confidence, 3),
-            
+
             "regulatory_action": decision_result["regulatory_action"],
             "requires_human_review": decision_result["requires_human_review"],
             

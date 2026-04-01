@@ -1,0 +1,391 @@
+from fastapi import FastAPI, HTTPException
+import logging
+from datetime import datetime
+from typing import Dict, Any, List
+import json
+
+# LangChain imports for decision-making
+from langchain.prompts import ChatPromptTemplate
+from langchain_ollama import ChatOllama
+from langchain_core.output_parsers import JsonOutputParser
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Decision Agent with LangChain", version="2.0.0")
+
+# Initialize LLM for explainable decisions
+try:
+    OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
+    LLM_MODEL = os.getenv("LLM_MODEL", "mistral")
+    
+    llm = ChatOllama(
+        model=LLM_MODEL,
+        base_url=OLLAMA_URL,
+        temperature=0.1,  # Very low temperature for consistent decisions
+    )
+except:
+    llm = None
+
+# Decision thresholds
+VERY_LOW_RISK_THRESHOLD = 0.2
+LOW_RISK_THRESHOLD = 0.33
+MEDIUM_LOW_THRESHOLD = 0.5
+MEDIUM_RISK_THRESHOLD = 0.66
+MEDIUM_HIGH_THRESHOLD = 0.8
+HIGH_RISK_THRESHOLD = 0.9
+
+# ═════════════════════════════════════════════════════════════
+# DECISION MAKING SYSTEM
+# ═════════════════════════════════════════════════════════════
+
+class DecisionEngine:
+    """
+    Advanced decision-making with explainability and governance
+    """
+    
+    # Decision rules with confidence multipliers
+    DECISION_RULES = {
+        "verification_failed": {
+            "decision": "REJECTED",
+            "reason": "Document verification failed - unable to proceed",
+            "confidence_factor": 1.0,
+            "regulatory_action": "REJECT"
+        },
+        "critical_risk": {
+            "decision": "REJECTED",
+            "reason": "Critical risk profile detected - potential fraud or AML concern",
+            "confidence_factor": 1.0,
+            "regulatory_action": "ESCALATE_AND_REJECT"
+        },
+        "high_risk": {
+            "decision": "REVIEW",
+            "reason": "High risk profile requires manual review",
+            "confidence_factor": 0.95,
+            "regulatory_action": "ESCALATE_FOR_REVIEW"
+        },
+        "medium_high_risk": {
+            "decision": "CONDITIONAL_REVIEW",
+            "reason": "Medium-high risk requires enhanced due diligence",
+            "confidence_factor": 0.85,
+            "regulatory_action": "ENHANCED_VERIFICATION"
+        },
+        "medium_risk": {
+            "decision": "REVIEW",
+            "reason": "Medium risk - standard enhanced due diligence needed",
+            "confidence_factor": 0.75,
+            "regulatory_action": "STANDARD_REVIEW"
+        },
+        "low_medium_risk": {
+            "decision": "CONDITIONAL_APPROVAL",
+            "reason": "Low-medium risk - may proceed with standard controls",
+            "confidence_factor": 0.80,
+            "regulatory_action": "STANDARD_APPROVAL"
+        },
+        "low_risk": {
+            "decision": "APPROVED",
+            "reason": "Low risk profile - standard KYC verification sufficient",
+            "confidence_factor": 0.85,
+            "regulatory_action": "APPROVE"
+        },
+        "very_low_risk": {
+            "decision": "APPROVED",
+            "reason": "Very low risk profile - minimal concerns detected",
+            "confidence_factor": 0.90,
+            "regulatory_action": "APPROVE"
+        }
+    }
+    
+    def __init__(self):
+        self.decision_history = []
+        self.decision_count = 0
+    
+    def analyze_risk_factors(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze all risk factors for comprehensive decision making
+        """
+        risk_score = data.get("risk_score", 0.5)
+        risk_level = data.get("risk_level", "MEDIUM")
+        verified = data.get("verified", False)
+        
+        # Extract intelligence from data
+        factors = data.get("intelligence_metrics", {})
+        
+        analysis = {
+            "risk_metrics": {
+                "score": risk_score,
+                "level": risk_level,
+                "verified": verified
+            },
+            "risk_indicators": self.extract_risk_indicators(data),
+            "mitigating_factors": self.extract_mitigating_factors(data),
+            "regulatory_concerns": self.extract_regulatory_concerns(data),
+            "overall_risk_assessment": self.assess_overall_risk(risk_score, verified)
+        }
+        
+        return analysis
+    
+    def extract_risk_indicators(self, data: Dict[str, Any]) -> List[str]:
+        """Extract specific risk indicators from data"""
+        indicators = []
+        risk_level = data.get("risk_level", "").upper()
+        
+        # Map risk level to indicators
+        risk_maps = {
+            "CRITICAL": ["Potential fraud", "Money laundering suspicion", "Sanctions concerns"],
+            "HIGH": ["Multiple red flags", "Suspicious patterns", "Inconsistent information"],
+            "MEDIUM_HIGH": ["Some concerns identified", "Requires closer inspection"],
+            "MEDIUM": ["Standard AML checks needed", "Documentation issues"],
+            "LOW_MEDIUM": ["Minor documentation gaps"],
+            "LOW": [],
+            "VERY_LOW": []
+        }
+        
+        return risk_maps.get(risk_level, [])
+    
+    def extract_mitigating_factors(self, data: Dict[str, Any]) -> List[str]:
+        """Extract factors that reduce risk"""
+        factors = []
+        
+        if data.get("verified", False):
+            factors.append("✓ Document verification passed")
+        
+        if data.get("confidence_score", 0) > 0.8:
+            factors.append("✓ High extraction confidence")
+        
+        if "analysis" in data and len(str(data["analysis"])) > 100:
+            factors.append("✓ Comprehensive document content")
+        
+        return factors
+    
+    def extract_regulatory_concerns(self, data: Dict[str, Any]) -> List[str]:
+        """Extract regulatory compliance concerns"""
+        concerns = []
+        risk_score = data.get("risk_score", 0.5)
+        
+        if risk_score > 0.8:
+            concerns.append("HIGH: Potential AML/CFT red flags")
+        elif risk_score > 0.66:
+            concerns.append("MEDIUM: Enhanced due diligence required")
+        elif risk_score > 0.5:
+            concerns.append("MEDIUM: Standard verification procedures")
+        
+        return concerns
+    
+    def assess_overall_risk(self, risk_score: float, verified: bool) -> str:
+        """Provide overall risk assessment"""
+        if not verified:
+            return "UNVERIFIED - Cannot proceed"
+        elif risk_score < 0.2:
+            return "MINIMAL RISK - Low regulatory concern"
+        elif risk_score < 0.33:
+            return "LOW RISK - Standard controls sufficient"
+        elif risk_score < 0.5:
+            return "LOW-MEDIUM RISK - Enhanced controls recommended"
+        elif risk_score < 0.66:
+            return "MEDIUM RISK - Manual review required"
+        elif risk_score < 0.8:
+            return "MEDIUM-HIGH RISK - Enhanced scrutiny needed"
+        else:
+            return "HIGH/CRITICAL RISK - Escalation recommended"
+    
+    def make_decision(self, risk_score: float, risk_level: str, verified: bool, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Make final KYC decision based on comprehensive analysis
+        """
+        
+        # Get confidence score for refined decision making
+        confidence_score = data.get("confidence_score", 0.0)
+        
+        # Primary check: Verification status WITH confidence override
+        # If confidence is high (>=0.8), allow conditional approval even if verification failed on minor check
+        if not verified:
+            if confidence_score >= 0.8:
+                logger.info(f"Verification failed but confidence is high ({confidence_score:.2%}), allowing conditional review")
+                rule = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
+                return self.format_decision(rule, risk_score)
+            else:
+                logger.warning(f"Verification failed and confidence is low ({confidence_score:.2%}), rejecting")
+                rule = self.DECISION_RULES["verification_failed"]
+                return self.format_decision(rule, risk_score)
+        
+        # Map risk level to decision rule
+        rule_key = risk_level.lower() if risk_level else "medium_risk"
+        
+        # Handle unmapped risk levels
+        risk_mapping = {
+            "very_low": "very_low_risk",
+            "low": "low_risk",
+            "low_medium": "low_medium_risk",
+            "medium": "medium_risk",
+            "medium_high": "medium_high_risk",
+            "high": "high_risk",
+            "critical": "critical_risk"
+        }
+        
+        rule_key = risk_mapping.get(risk_level.lower(), "medium_risk")
+        
+        if rule_key not in self.DECISION_RULES:
+            rule_key = "medium_risk"
+        
+        rule = self.DECISION_RULES[rule_key]
+        return self.format_decision(rule, risk_score)
+    
+    def format_decision(self, rule: Dict[str, Any], risk_score: float) -> Dict[str, Any]:
+        """Format decision with all metadata"""
+        return {
+            "decision": rule["decision"],
+            "reason": rule["reason"],
+            "confidence": rule["confidence_factor"],
+            "risk_adjusted_confidence": max(0.0, rule["confidence_factor"] - (risk_score * 0.1)),
+            "regulatory_action": rule["regulatory_action"],
+            "requires_human_review": rule["decision"] in ["REVIEW", "CONDITIONAL_REVIEW", "CONDITIONAL_APPROVAL"]
+        }
+    
+    def generate_decision_explanation(self, data: Dict[str, Any], decision_result: Dict[str, Any]) -> str:
+        """Generate human-readable explanation of decision"""
+        lines = [
+            f"Decision: {decision_result['decision']}",
+            f"Reason: {decision_result['reason']}",
+            f"Confidence: {decision_result['confidence']:.2%}",
+            f"Regulatory Action: {decision_result['regulatory_action']}"
+        ]
+        
+        if decision_result["requires_human_review"]:
+            lines.append("⚠️ Human Review Required")
+        
+        return "\n".join(lines)
+
+# Global decision engine
+decision_engine = DecisionEngine()
+
+@app.get("/health")
+async def health():
+    """Health check"""
+    return {"status": "healthy", "version": "2.0.0"}
+
+@app.post("/decision")
+async def decision(data: Dict[str, Any]):
+    """
+    Make final KYC decision with comprehensive analysis
+    """
+    try:
+        logger.info("Making final KYC decision with advanced analysis...")
+        
+        # Extract decision inputs
+        risk_score = data.get("risk_score", 0.5)
+        risk_level = data.get("risk_level", "MEDIUM")
+        verified = data.get("verified", False)
+        
+        # Perform comprehensive risk analysis
+        risk_analysis = decision_engine.analyze_risk_factors(data)
+        
+        # Make decision
+        decision_result = decision_engine.make_decision(
+            risk_score, 
+            risk_level, 
+            verified,
+            data
+        )
+        
+        # Generate explanation
+        explanation = decision_engine.generate_decision_explanation(data, decision_result)
+        
+        # Build comprehensive result
+        result = {
+            "status": "success",
+            "decision": decision_result["decision"],
+            "reason": decision_result["reason"],
+            "confidence": round(decision_result["confidence"], 3),
+            "risk_adjusted_confidence": round(decision_result["risk_adjusted_confidence"], 3),
+            "regulatory_action": decision_result["regulatory_action"],
+            "requires_human_review": decision_result["requires_human_review"],
+            
+            # Detailed analysis
+            "analysis": {
+                "risk_factors_summary": risk_analysis["risk_indicators"],
+                "mitigating_factors": risk_analysis["mitigating_factors"],
+                "regulatory_concerns": risk_analysis["regulatory_concerns"],
+                "overall_assessment": risk_analysis["overall_risk_assessment"],
+                "explanation": explanation
+            },
+            
+            # Decision metadata
+            "input_metrics": {
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "verified": verified,
+                "confidence_score": data.get("confidence_score", 0.0)
+            },
+            
+            "decision_version": "2.0.0 (Advanced)",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        logger.info(f"Decision: {decision_result['decision']} | Confidence: {decision_result['confidence']:.2%}")
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error in decision: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Decision error: {str(e)}")
+
+@app.get("/decision-rules")
+async def get_decision_rules():
+    """Get all decision rules for transparency"""
+    return {
+        "version": "2.0.0",
+        "decision_framework": "Multi-factor risk-based",
+        "rules": decision_engine.DECISION_RULES,
+        "thresholds": {
+            "very_low_risk": f"0.0 - {VERY_LOW_RISK_THRESHOLD}",
+            "low_risk": f"{VERY_LOW_RISK_THRESHOLD} - {LOW_RISK_THRESHOLD}",
+            "low_medium_risk": f"{LOW_RISK_THRESHOLD} - {MEDIUM_LOW_THRESHOLD}",
+            "medium_risk": f"{MEDIUM_LOW_THRESHOLD} - {MEDIUM_RISK_THRESHOLD}",
+            "medium_high_risk": f"{MEDIUM_RISK_THRESHOLD} - {MEDIUM_HIGH_THRESHOLD}",
+            "high_risk": f"{MEDIUM_HIGH_THRESHOLD} - {HIGH_RISK_THRESHOLD}",
+            "critical_risk": f"{HIGH_RISK_THRESHOLD} - 1.0"
+        }
+    }
+
+@app.get("/capabilities")
+async def capabilities():
+    """Get capabilities of the advanced decision agent"""
+    return {
+        "agent": "Decision Agent",
+        "version": "2.0.0",
+        "features": [
+            "Advanced risk-factor analysis",
+            "Explainable decision making",
+            "Regulatory compliance framework",
+            "Confidence scoring with risk adjustment",
+            "Human review escalation logic",
+            "Comprehensive risk assessment",
+            "Decision rule transparency",
+            "Multi-dimensional risk analysis",
+            "Mitigating factors evaluation",
+            "Regulatory concerns flagging"
+        ],
+        "decision_types": [
+            "APPROVED",
+            "CONDITIONAL_APPROVAL",
+            "REVIEW",
+            "CONDITIONAL_REVIEW",
+            "REJECTED"
+        ],
+        "regulatory_actions": [
+            "APPROVE",
+            "STANDARD_APPROVAL",
+            "ENHANCED_VERIFICATION",
+            "STANDARD_REVIEW",
+            "ESCALATE_FOR_REVIEW",
+            "ESCALATE_AND_REJECT",
+            "REJECT"
+        ]
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+

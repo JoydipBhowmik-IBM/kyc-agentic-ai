@@ -307,6 +307,12 @@ async def risk(data: Dict[str, Any]):
     """
     try:
         logger.info("Starting advanced risk analysis...")
+        logger.info(f"Risk-agent input - verified: {data.get('verified')}, confidence_score: {data.get('confidence_score')}")
+        
+        # CRITICAL: Save verification fields before analysis
+        saved_verified = data.get("verified", False)
+        saved_confidence_score = data.get("confidence_score", 0.0)
+        saved_validations = data.get("validations", {})
         
         # Perform multi-factor analysis
         risk_score, analysis_details = analyzer.calculate_multi_factor_risk(data)
@@ -373,6 +379,14 @@ async def risk(data: Dict[str, Any]):
 
         logger.info(f"Risk assessment completed: {risk_level} (score: {risk_score})")
         logger.info(f"Recommendations: {len(recommendations)} action items")
+        
+        # CRITICAL: Restore saved verification fields for downstream decision-agent
+        # Use the saved values to ensure they flow correctly through the pipeline
+        result["verified"] = saved_verified
+        result["confidence_score"] = saved_confidence_score
+        result["validations"] = saved_validations
+        
+        logger.info(f"Risk-agent output - verified: {result.get('verified')}, confidence_score: {result.get('confidence_score')}")
         
         return result
     
