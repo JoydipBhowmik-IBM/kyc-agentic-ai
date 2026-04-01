@@ -101,6 +101,13 @@ async def process(file: UploadFile = File(...)):
         logger.info("Step 1: Extracting information from document...")
         extract_result = await call_agent(EXTRACT_AGENT_URL, "extract", files={"file": (file.filename, content)})
         workflow_data["extract"] = extract_result
+        
+        # DEBUG: Log extract result details
+        logger.info(f"Extract Agent Response:")
+        logger.info(f"  - status: {extract_result.get('status')}")
+        logger.info(f"  - document_type: {extract_result.get('document_type')}")
+        logger.info(f"  - confidence: {extract_result.get('confidence')}")
+        logger.info(f"  - is_valid_kyc: {extract_result.get('is_valid_kyc')} ← CRITICAL FLAG")
 
         # Check if document is a valid KYC document
         if extract_result.get("status") == "invalid_document":
@@ -137,10 +144,18 @@ async def process(file: UploadFile = File(...)):
 
         # Step 2: Verify
         logger.info("Step 2: Verifying extracted information...")
-        logger.info(f"  📋 Document Type (from extract): {extract_result.get('document_type')}")
-        logger.info(f"  📋 Confidence (from extract): {extract_result.get('confidence')}")
+        logger.info(f"  📋 Passing to Verify Agent:")
+        logger.info(f"    - document_type: {extract_result.get('document_type')}")
+        logger.info(f"    - is_valid_kyc: {extract_result.get('is_valid_kyc')} ← MUST PASS THIS!")
+        logger.info(f"    - confidence: {extract_result.get('confidence')}")
         verify_result = await call_agent(VERIFY_AGENT_URL, "verify", data=extract_result)
         workflow_data["verify"] = verify_result
+        
+        # DEBUG: Log verify result
+        logger.info(f"Verify Agent Response:")
+        logger.info(f"  - verified: {verify_result.get('verified')}")
+        logger.info(f"  - is_valid_kyc: {verify_result.get('is_valid_kyc')} ← SHOULD BE IN RESPONSE")
+        logger.info(f"  - validations: {verify_result.get('validations')}")
 
         if "error" in verify_result:
             logger.error(f"Verification failed: {verify_result['error']}")
