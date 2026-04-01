@@ -159,15 +159,22 @@ class DocumentValidator:
             KYCDocumentType.UTILITY_BILL,
         ]
         
-        # Special handling for PAN documents - they're primary KYC documents
-        # Use lower threshold (0.20) for PAN since it's a critical document
+        # Special handling for different document types - thresholds are confidence-based
+        # Lower thresholds allow fuzzy matching, higher confidence = stronger evidence
         if best_type == KYCDocumentType.PAN:
+            # PAN: Lower threshold (0.20) - critical document
             is_valid = best_score > 0.20
+        elif best_type == KYCDocumentType.AADHAR:
+            # Aadhar: Allow from 0.30 confidence (40% is acceptable)
+            # Even lower confidence Aadhar should be accepted but flagged
+            is_valid = best_score > 0.25
         else:
+            # Other KYC documents: require 0.3+ confidence
             is_valid = best_type in kyc_document_types and best_score > 0.3
         
-        # If score is very low, mark as Unknown instead of a specific type
-        if best_score < 0.1:
+        # CRITICAL: Only mark as UNKNOWN if score is VERY LOW (< 0.1) OR type not in valid list
+        # Don't mark valid document types as Unknown just because confidence is low
+        if best_score < 0.1 and best_type not in kyc_document_types:
             best_type = KYCDocumentType.UNKNOWN
         
         result = {
@@ -215,17 +222,21 @@ class DocumentValidator:
         # CRITICAL: Check for Income Tax Department header - STRONGEST indicator
         # Support variations due to OCR (use text_normalized to handle newlines and extra spaces)
         income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
-        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
-        
+        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india', 'govt india']
+
         # Use normalized text which handles newlines and extra spaces
         has_income_tax = any(keyword in text_normalized for keyword in income_tax_keywords)
         has_dept = any(keyword in text_normalized for keyword in dept_keywords)
         
         if has_income_tax and has_dept:
-            score += 0.85  # VERY STRONG indicator - Income Tax Department clearly indicates PAN
+            score += 0.95  # ABSOLUTE strongest indicator - Income Tax Department + Govt = PAN
         elif has_income_tax:
-            score += 0.65  # Strong indicator even without explicit "department"
+            score += 0.80  # Very strong - Income Tax mention almost always means PAN
         
+        # Check for "Permanent Account Number" - STRONGEST explicit indicator
+        if 'permanent account number' in text_lower or 'permanent account' in text_lower:
+            score += 0.90  # Explicit PAN indicator
+
         # Check for PAN format XXXXX0000X - VERY HIGH WEIGHT
         # Also support formats with spaces or special chars that OCR might introduce
         pan_formats = [
@@ -235,19 +246,23 @@ class DocumentValidator:
         ]
         
         if any(pan_formats):
-            score += 0.75  # Increased weight for PAN format
-        
+            score += 0.80  # Very high weight for PAN format
+
         # Check for explicit PAN keywords - HIGH WEIGHT
-        explicit_pan_keywords = ['pan card', 'pan number', 'pan:', 'permanent account number', 'p.a.n', 'permanent account']
+        explicit_pan_keywords = ['pan card', 'pan number', 'pan:', 'p.a.n', 'apjpb', 'assessement', 'assessor code']
         explicit_matches = sum(1 for keyword in explicit_pan_keywords if keyword in text_lower)
-        score += min(explicit_matches * 0.35, 0.65)
-        
+        score += min(explicit_matches * 0.30, 0.60)
+
         # Check for common PAN fields - these are very indicative
-        pan_specific_fields = ['date of birth', 'father', 'name', 'assessement year', 'dob', 'signature', 'assessor code']
+        pan_specific_fields = ['date of birth', 'father', 'name', 'assessement year', 'dob', 'signature', 'assessor code', 'dob']
         field_matches = sum(1 for field in pan_specific_fields if field in text_lower)
-        score += min(field_matches * 0.15, 0.3)
+        score += min(field_matches * 0.12, 0.25)
+
+        # Strong reject if this is clearly another document type
+        if any(keyword in text_lower for keyword in ['driving license', 'aadhar', 'aadhaar', 'uid', 'unique id', 'voter id', 'election commission', 'epic']):
+            score *= 0.5  # Penalize if conflicting keywords present
         
-        # Additional PAN indicators from the actual card layout
+        return min(score, 1.0)
         if any(keyword in text_lower for keyword in ['govt', 'sarkaar', 'भारत', 'government']):
             score += 0.1
         
@@ -336,22 +351,28 @@ class DocumentValidator:
         score = 0.0
         
         # CRITICAL: If this is clearly a PAN document, return 0 immediately
-        # Support variations due to OCR (use normalized text for better detection)
+        # Check multiple variations of PAN indicators
         income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
-        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
+        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india', 'govt india']
         
+        # If Income Tax Department header is present, definitely PAN not bank statement
         if any(keyword in text_normalized for keyword in income_tax_keywords) and \
            any(keyword in text_normalized for keyword in dept_keywords):
-            return 0.0  # Definitely a PAN document, not a bank statement
+            return 0.0  # Absolutely NOT a bank statement
         
+        # If Permanent Account Number is mentioned, it's definitely PAN
+        if 'permanent account number' in text_lower or 'permanent account' in text_lower:
+            return 0.0
+        
+        # If it has PAN format XXXXX0000X AND Income Tax keywords, it's definitely a PAN
         if re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text):
-            # If it has PAN format AND Income Tax keywords, it's definitely a PAN
             if any(keyword in text_normalized for keyword in income_tax_keywords) or \
-               'permanent account number' in text_lower:
-                return 0.0
+               'permanent account number' in text_lower or \
+               'pan' in text_lower:
+                return 0.0  # PAN format + context = definitely PAN, not bank
         
         # If document has PAN card layout indicators, return 0
-        if any(keyword in text_lower for keyword in ['permanent account number', 'pan number', 'pan card']):
+        if any(keyword in text_lower for keyword in ['permanent account number', 'pan number', 'pan card', 'pan:', 'p.a.n']):
             return 0.0
         
         # Check for strong bank statement keywords

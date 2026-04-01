@@ -154,7 +154,8 @@ async def process(file: UploadFile = File(...)):
         # DEBUG: Log verify result
         logger.info(f"Verify Agent Response:")
         logger.info(f"  - verified: {verify_result.get('verified')}")
-        logger.info(f"  - is_valid_kyc: {verify_result.get('is_valid_kyc')} ← SHOULD BE IN RESPONSE")
+        logger.info(f"  - is_valid_kyc: {verify_result.get('is_valid_kyc')} ← MUST BE PASSED DOWNSTREAM")
+        logger.info(f"  - document_type: {verify_result.get('document_type')}")
         logger.info(f"  - validations: {verify_result.get('validations')}")
 
         if "error" in verify_result:
@@ -163,8 +164,12 @@ async def process(file: UploadFile = File(...)):
         # Step 3: Reason (LLM Analysis)
         logger.info("Step 3: Performing LLM analysis...")
         logger.info(f"  📋 Document Type (passed to reason): {verify_result.get('document_type')}")
+        logger.info(f"  📋 is_valid_kyc (passed to reason): {verify_result.get('is_valid_kyc')} ← CRITICAL")
         reason_result = await call_agent(REASON_AGENT_URL, "reason", data=verify_result)
         workflow_data["reason"] = reason_result
+        
+        logger.info(f"Reason Agent Response:")
+        logger.info(f"  - is_valid_kyc: {reason_result.get('is_valid_kyc')} ← MUST CONTINUE")
 
         if "error" in reason_result:
             logger.error(f"Reasoning failed: {reason_result['error']}")
@@ -172,8 +177,12 @@ async def process(file: UploadFile = File(...)):
         # Step 4: Risk Assessment
         logger.info("Step 4: Assessing risk...")
         logger.info(f"  📋 Document Type (passed to risk): {reason_result.get('document_type')}")
+        logger.info(f"  📋 is_valid_kyc (passed to risk): {reason_result.get('is_valid_kyc')} ← CRITICAL")
         risk_result = await call_agent(RISK_AGENT_URL, "risk", data=reason_result)
         workflow_data["risk"] = risk_result
+        
+        logger.info(f"Risk Agent Response:")
+        logger.info(f"  - is_valid_kyc: {risk_result.get('is_valid_kyc')} ← MUST REACH DECISION")
 
         if "error" in risk_result:
             logger.error(f"Risk assessment failed: {risk_result['error']}")
@@ -181,12 +190,15 @@ async def process(file: UploadFile = File(...)):
         # Step 5: Decision
         logger.info("Step 5: Making final decision...")
         logger.info(f"  📋 Document Type (passed to decision): {risk_result.get('document_type')}")
+        logger.info(f"  📋 is_valid_kyc (passed to decision): {risk_result.get('is_valid_kyc')} ← CRITICAL FOR APPROVAL")
+        logger.info(f"  📋 verified (passed to decision): {risk_result.get('verified')}")
         logger.info(f"Sending to decision agent - risk_result keys: {risk_result.keys()}")
         logger.info(f"Risk result: {json.dumps({k: v for k, v in risk_result.items() if k not in ['text', 'analysis']}, indent=2)}")
         
         decision_result = await call_agent(DECISION_AGENT_URL, "decision", data=risk_result)
         
         logger.info(f"  📋 Document Type (returned from decision): {decision_result.get('document_type')}")
+        logger.info(f"  📋 is_valid_kyc (returned from decision): {decision_result.get('is_valid_kyc')}")
         logger.info(f"Decision agent response: {json.dumps({k: v for k, v in decision_result.items() if k not in ['analysis', 'intelligence_metrics']}, indent=2)}")
         workflow_data["decision"] = decision_result
 

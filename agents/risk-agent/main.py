@@ -369,6 +369,13 @@ async def risk(data: Dict[str, Any]):
             result["confidence_score"] = data.get("confidence_score")
         if "validations" in data:
             result["validations"] = data.get("validations")
+        
+        # CRITICAL: Double-check that is_valid_kyc is preserved
+        if "is_valid_kyc" not in result and "is_valid_kyc" in data:
+            logger.warning("WARN: is_valid_kyc missing from result - adding from input")
+            result["is_valid_kyc"] = data.get("is_valid_kyc")
+        
+        logger.info(f"Risk Agent Output - is_valid_kyc: {result.get('is_valid_kyc')} (from input: {data.get('is_valid_kyc')})")
 
         logger.info(f"Risk assessment completed: {risk_level} (score: {risk_score})")
         logger.info(f"Recommendations: {len(recommendations)} action items")

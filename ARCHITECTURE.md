@@ -1,926 +1,759 @@
-# 🏗️ KYC Agentic AI - Architecture Documentation
-
-## System Architecture Overview
-
-```
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                   KYC AGENTIC AI - SYSTEM ARCHITECTURE                        ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
-
-
-                              CLIENT LAYER
-                                  │
-                    ┌─────────────────────────────┐
-                    │   Web Browser / Client      │
-                    │  (http://localhost:3000)    │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │    FRONTEND LAYER           │
-                    │  (React + Node.js)          │
-                    │  Port: 3000                 │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │    API GATEWAY LAYER        │
-                    │   (FastAPI)                 │
-                    │   Port: 8000                │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │  ORCHESTRATION SERVICE      │
-                    │   (FastAPI)                 │
-                    │   Port: 8010                │
-                    └──────────────┬──────────────┘
-                                   │
-              ┌────────┬───────────┼───────────┬────────┐
-              │        │           │           │        │
-              ▼        ▼           ▼           ▼        ▼
-        ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-        │Extract  │ │ Verify  │ │ Reason  │ │  Risk   │ │Decision │
-        │ Agent   │ │ Agent   │ │ Agent   │ │ Agent   │ │ Agent   │
-        │(8001)   │ │ (8002)  │ │ (8003)  │ │ (8004)  │ │ (8005)  │
-        │FastAPI  │ │ FastAPI │ │ FastAPI │ │ FastAPI │ │ FastAPI │
-        └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘
-             │           │           │           │           │
-             └───────────┼───────────┼───────────┼───────────┘
-                         │
-                    ┌────▼─────┐
-                    │  OLLAMA   │
-                    │   LLM     │
-                    │ (11434)   │
-                    └───────────┘
-
-                    MICROSERVICES LAYER
-                    (All in Docker containers)
-```
-
----
+# 🏗️ KYC Agentic AI - Complete Architecture Documentation
 
 ## 📋 Table of Contents
 
-1. [High-Level Architecture](#high-level-architecture)
-2. [Component Overview](#component-overview)
-3. [Data Flow](#data-flow)
-4. [Communication Patterns](#communication-patterns)
-5. [Service Dependencies](#service-dependencies)
-6. [Technology Stack](#technology-stack)
+1. [System Overview](#system-overview)
+2. [Architecture Layers](#architecture-layers)
+3. [Core Components](#core-components)
+4. [Data Flow](#data-flow)
+5. [Component Interactions](#component-interactions)
+6. [Validation Pipeline](#validation-pipeline)
 7. [Deployment Architecture](#deployment-architecture)
-8. [Security Architecture](#security-architecture)
+8. [Technology Stack](#technology-stack)
 
 ---
 
-## 🏛️ High-Level Architecture
+## 🎯 System Overview
 
-### Layered Architecture
+### Purpose
+KYC (Know Your Customer) Agentic AI is an intelligent, automated system for customer identity verification and risk assessment using multiple independent AI agents working in an orchestrated pipeline.
+
+### Architecture Pattern
+**Event-Driven Microservices with AI Orchestration**
+- Independent agents (microservices) handle specific KYC tasks
+- Central orchestrator coordinates the workflow
+- API Gateway provides unified interface
+- Vector DB + RAG for intelligent decision making
+
+### Key Principles
+- ✅ **Modularity** - Each agent has single responsibility
+- ✅ **Scalability** - Independent scaling of agents
+- ✅ **Resilience** - Health checks and graceful degradation
+- ✅ **Intelligence** - AI-powered validation and reasoning
+- ✅ **Transparency** - Complete audit trail of all operations
+
+---
+
+## 🏢 Architecture Layers
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   PRESENTATION LAYER                        │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  React Web UI (Frontend)                               │ │
-│  │  - User Interface                                      │ │
-│  │  - Document Upload                                    │ │
-│  │  - Results Display                                    │ │
-│  │  Port: 3000 (Node.js)                                │ │
-│  └────────────────────────────────────────────────────────┘ │
-└────────────────────┬───────────────────────────────────────┘
-                     │ HTTP/REST
-                     │
-┌────────────────────▼───────────────────────────────────────┐
-│                  API LAYER                                  │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  FastAPI Gateway                                       │ │
-│  │  - Request Routing                                     │ │
-│  │  - Authentication                                     │ │
-│  │  - Response Aggregation                               │ │
-│  │  Port: 8000                                           │ │
-│  └────────────────────────────────────────────────────────┘ │
-└────────────────────┬───────────────────────────────────────┘
-                     │ HTTP/REST
-                     │
-┌────────────────────▼───────────────────────────────────────┐
-│              ORCHESTRATION LAYER                            │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Orchestration Service                                 │ │
-│  │  - Workflow Management                                 │ │
-│  │  - Agent Orchestration                                 │ │
-│  │  - Process Coordination                               │ │
-│  │  Port: 8010                                           │ │
-│  └────────────────────────────────────────────────────────┘ │
-└────────────────────┬───────────────────────────────────────┘
-                     │ HTTP/REST
-                     │
-┌────────────────────▼───────────────────────────────────────┐
-│             MICROSERVICES LAYER                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Extract    │  │   Verify     │  │   Reason     │     │
-│  │   Agent      │  │   Agent      │  │   Agent      │     │
-│  │   (8001)     │  │   (8002)     │  │   (8003)     │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
-│  ┌──────────────┐  ┌──────────────┐                       │
-│  │   Risk       │  │   Decision   │                       │
-│  │   Agent      │  │   Agent      │                       │
-│  │   (8004)     │  │   (8005)     │                       │
-│  └──────────────┘  └──────────────┘                       │
-│  ┌──────────────────────────────────┐                     │
-│  │   Ollama LLM Service             │                     │
-│  │   (11434)                        │                     │
-│  └──────────────────────────────────┘                     │
+│                    PRESENTATION LAYER                        │
+│  (Frontend - Web UI)                                         │
+│  Port: 3000                                                  │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│              API GATEWAY LAYER                               │
+│  (Single Entry Point)                                        │
+│  Port: 8000                                                  │
+│  - Request routing                                           │
+│  - Authentication                                            │
+│  - Response formatting                                       │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│           ORCHESTRATION LAYER                                │
+│  (Workflow Coordination)                                     │
+│  Port: 8010                                                  │
+│  - Agent sequencing                                          │
+│  - State management                                          │
+│  - Decision logic                                            │
+└──┬─────────────────┬──────────────────┬────────────────────┬┘
+   │                 │                  │                    │
+┌──▼──┐    ┌────────▼────┐    ┌───────▼────┐    ┌──────────▼──┐
+│ E   │    │ V           │    │ R          │    │ D           │
+│ A   │    │ E           │    │ I          │    │ E           │
+│ G   │    │ R           │    │ S          │    │ C           │
+│     │    │ I           │    │ K          │    │ I           │
+└──┬──┘    └────────┬────┘    └───────┬────┘    └──────────┬──┘
+   │                 │                 │                   │
+└──────────────────────────────────────────────────────────┘
+        AGENT LAYER (Microservices)
+        - Extract Agent
+        - Verify Agent
+        - Reason Agent
+        - Risk Agent
+        - Decision Agent
+
+        SUPPORT SERVICES:
+        - MCP Server (RAG + Knowledge Base)
+        - Vector DB (Embeddings + Retrieval)
+```
+
+---
+
+## 🔧 Core Components
+
+### 1. **API GATEWAY** (Port 8000)
+**Type**: FastAPI Service
+**Responsibility**: Single entry point for all external requests
+
+```
+Functions:
+├─ Request routing to orchestration service
+├─ Request validation
+├─ Response formatting
+├─ Error handling
+├─ Health monitoring
+└─ Authentication (future)
+
+Interface:
+├─ POST /kyc/validate - Initiate KYC process
+├─ GET /kyc/status/{request_id} - Check status
+├─ GET /health - Service health
+└─ GET /metrics - Performance metrics
+```
+
+### 2. **ORCHESTRATION SERVICE** (Port 8010)
+**Type**: FastAPI Workflow Engine
+**Responsibility**: Coordinate agent pipeline execution
+
+```
+Functions:
+├─ Sequencing agents in correct order
+├─ Managing state between agents
+├─ Handling agent responses
+├─ Error recovery and retries
+├─ Logging and audit trails
+├─ Performance tracking
+└─ Decision consolidation
+
+Workflow:
+1. Receive request from API Gateway
+2. Initialize extraction process
+3. Verify extracted data
+4. Perform reasoning analysis
+5. Assess risk profile
+6. Make final KYC decision
+7. Return consolidated result
+```
+
+### 3. **EXTRACT AGENT** (Port 8001)
+**Type**: FastAPI Service
+**Responsibility**: Extract customer information from multiple sources
+
+```
+Capabilities:
+├─ Document parsing (ID, Passport, PAN, Aadhar)
+├─ Data normalization
+├─ Field extraction
+├─ Format standardization
+├─ Confidence scoring
+└─ Error flagging
+
+Input: Raw customer data
+Output: Structured extracted data with confidence scores
+Performance: ~100-200ms per request
+```
+
+### 4. **VERIFY AGENT** (Port 8002)
+**Type**: FastAPI Service
+**Responsibility**: Verify extracted data accuracy
+
+```
+Capabilities:
+├─ Cross-field validation
+├─ Format verification
+├─ Range checking
+├─ Consistency validation
+├─ Database lookups
+├─ Real-time verification APIs
+└─ Fraud pattern detection
+
+Input: Extracted data from Extract Agent
+Output: Verification status + confidence scores
+Performance: ~200-500ms per request
+```
+
+### 5. **REASON AGENT** (Port 8003)
+**Type**: FastAPI + LLM Service (Ollama)
+**Responsibility**: Intelligent analysis using AI reasoning
+
+```
+Capabilities:
+├─ Natural language analysis
+├─ Context understanding
+├─ Anomaly detection
+├─ Policy compliance checking
+├─ RAG-based knowledge retrieval
+├─ Explanation generation
+└─ Decision support
+
+Input: Verified data + context
+Output: Reasoning analysis + recommendations
+Performance: ~1-3s per request (LLM dependent)
+```
+
+### 6. **RISK AGENT** (Port 8004)
+**Type**: FastAPI Service
+**Responsibility**: Assess customer risk profile
+
+```
+Capabilities:
+├─ Risk scoring algorithms
+├─ Fraud probability calculation
+├─ Sanctions list checking
+├─ PEP (Politically Exposed Person) checking
+├─ Historical risk data lookup
+├─ Compliance rule evaluation
+└─ Risk categorization
+
+Input: All previous data + external data
+Output: Risk score + risk category + flags
+Performance: ~300-600ms per request
+```
+
+### 7. **DECISION AGENT** (Port 8005)
+**Type**: FastAPI Service
+**Responsibility**: Make final KYC approval/rejection decision
+
+```
+Capabilities:
+├─ Multi-factor decision logic
+├─ Threshold-based rules
+├─ Exception handling
+├─ Policy enforcement
+├─ Case escalation
+├─ Audit logging
+└─ Decision explanation
+
+Input: All agent outputs + risk profile
+Output: APPROVED/REJECTED/REVIEW_REQUIRED + reason
+Performance: ~50-100ms per request
+```
+
+### 8. **VALIDATION PIPELINE** (Ports 8100-8103)
+**Type**: Multi-tier Validation System
+**Responsibility**: Ensure data quality throughout the process
+
+```
+Architecture:
+┌─────────────────────────────────────────┐
+│ VALIDATION ORCHESTRATOR (8100)          │
+│ Intelligent chain coordinator            │
+└─────────────┬───────────────────────────┘
+              │
+    ┌─────────┼─────────┐
+    │         │         │
+    ▼         ▼         ▼
+┌────────┐┌────────┐┌────────┐
+│Validator-1│Validator-2│Validator-3
+│(8101)     │(8102)      │(8103)
+│Pattern    │Fuzzy       │AI/Ollama
+│Validation │Matching    │Validation
+└────────┘└────────┘└────────┘
+
+Validation Flow:
+├─ V1 (Fast): Pattern matching (50-100ms)
+├─ V2 (Medium): Fuzzy matching if V1 fails (100-200ms)
+└─ V3 (Smart): Ollama LLM if V2 fails (1-5s)
+
+Fallback: If V1 fails → try V2 → try V3 → REJECT if all fail
+```
+
+### 9. **MCP SERVER** (Port 8020)
+**Type**: FastAPI + LLM Tools Server
+**Responsibility**: Provide RAG and tool integration for agents
+
+```
+Capabilities:
+├─ Knowledge base retrieval
+├─ Embedding generation
+├─ Semantic search
+├─ Document similarity
+├─ Policy/rules lookup
+└─ Tool calling interface
+
+Features:
+├─ Vector DB integration
+├─ Retrieval-Augmented Generation (RAG)
+├─ Context enrichment
+└─ Tool calling for external APIs
+```
+
+### 10. **VECTOR DATABASE** (kyc_vector_db/)
+**Type**: ChromaDB
+**Responsibility**: Store and retrieve embeddings for RAG
+
+```
+Data Stored:
+├─ KYC Rules (kyc_rules.json)
+├─ Fraud Patterns (fraud_patterns.json)
+├─ Policy Documents (indexed)
+├─ Customer Historical Data
+└─ Decision Patterns
+
+Usage:
+├─ Reason Agent uses for context
+├─ Risk Agent uses for pattern matching
+├─ MCP Server provides access
+└─ Supports similarity search
+
+Index: index.json
+Metadata: metadata/
+```
+
+### 11. **FRONTEND** (Port 3000)
+**Type**: Node.js Web Server
+**Responsibility**: User interface for KYC application
+
+```
+Features:
+├─ Customer information input
+├─ Real-time status tracking
+├─ Document upload
+├─ Result display
+├─ Audit trail viewing
+└─ Admin dashboard
+
+Tech Stack:
+├─ HTML/CSS/JavaScript
+├─ Node.js server
+└─ Connects to API Gateway
+```
+
+---
+
+## 📊 Data Flow
+
+### Complete KYC Request Flow
+
+```
+1. USER INITIATES REQUEST
+   └─→ Frontend (3000) receives customer data
+
+2. API GATEWAY (8000)
+   └─→ Receives request from frontend
+   └─→ Validates request format
+   └─→ Routes to Orchestration Service
+
+3. ORCHESTRATION SERVICE (8010)
+   └─→ Creates KYC request context
+   └─→ Initiates agent pipeline
+   └─→ Tracks state transitions
+
+4. EXTRACT AGENT (8001)
+   └─→ Receives customer data
+   └─→ Parses documents
+   └─→ Extracts fields
+   └─→ Normalizes data
+   └─→ Returns: {extracted_data, confidence_scores}
+
+5. VERIFY AGENT (8002)
+   └─→ Receives extracted data
+   └─→ Validates each field
+   └─→ Checks consistency
+   └─→ Performs lookups
+   └─→ Returns: {verification_status, flags}
+
+6. MCP SERVER (8020)
+   └─→ Provides context to Reason Agent
+   └─→ Retrieves relevant policies
+   └─→ Provides embeddings
+   └─→ Returns context data
+
+7. REASON AGENT (8003)
+   └─→ Receives verified data + context
+   └─→ Queries MCP Server for knowledge
+   └─→ Uses Ollama LLM for analysis
+   └─→ Generates explanations
+   └─→ Returns: {analysis, recommendations}
+
+8. RISK AGENT (8004)
+   └─→ Receives all previous data
+   └─→ Queries Vector DB for patterns
+   └─→ Calculates risk scores
+   └─→ Checks sanctions/PEP lists
+   └─→ Returns: {risk_score, risk_category, flags}
+
+9. DECISION AGENT (8005)
+   └─→ Receives all agent outputs
+   └─→ Applies decision logic
+   └─→ Enforces policies
+   └─→ Makes final decision
+   └─→ Returns: {decision, reason, actions}
+
+10. ORCHESTRATION SERVICE
+    └─→ Consolidates all results
+    └─→ Logs audit trail
+    └─→ Calculates metrics
+    └─→ Returns consolidated result
+
+11. API GATEWAY
+    └─→ Formats response
+    └─→ Returns to Frontend
+
+12. FRONTEND
+    └─→ Displays decision
+    └─→ Shows supporting details
+    └─→ Provides audit trail
+```
+
+### Request/Response Example
+
+**Request:**
+```json
+{
+  "customer_id": "CUST_12345",
+  "documents": [
+    {
+      "type": "PASSPORT",
+      "file": "base64_encoded_document"
+    }
+  ],
+  "personal_data": {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "9876543210"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "request_id": "REQ_67890",
+  "decision": "APPROVED",
+  "confidence": 0.95,
+  "extracted_data": {
+    "name": "John Doe",
+    "pan": "AAAA0001A",
+    "aadhar": "123456789012"
+  },
+  "verification_status": "VERIFIED",
+  "risk_score": 15,
+  "risk_category": "LOW",
+  "reasoning": "Customer data verified. No red flags detected.",
+  "actions": ["APPROVE", "SEND_WELCOME_EMAIL"],
+  "timestamp": "2026-04-01T10:30:00Z",
+  "audit_trail": [...]
+}
+```
+
+---
+
+## 🔄 Component Interactions
+
+### Agent Execution Sequence
+
+```
+Timeline:
+┌─────────────────────────────────────────────────────────────┐
+│ T=0ms: Request arrives at API Gateway                       │
+├─────────────────────────────────────────────────────────────┤
+│ T=10ms: Orchestration Service received                      │
+├─────────────────────────────────────────────────────────────┤
+│ T=50ms: Extract Agent starts (parallel with validators)     │
+│ T=50ms: Validation Pipeline starts                          │
+├─────────────────────────────────────────────────────────────┤
+│ T=200ms: Extract Agent completes (150ms)                    │
+│ T=150ms: Validation checks complete (100ms)                 │
+├─────────────────────────────────────────────────────────────┤
+│ T=300ms: Verify Agent starts                                │
+├─────────────────────────────────────────────────────────────┤
+│ T=700ms: Verify Agent completes (400ms)                     │
+├─────────────────────────────────────────────────────────────┤
+│ T=750ms: Reason Agent starts (queries MCP)                  │
+├─────────────────────────────────────────────────────────────┤
+│ T=2500ms: Reason Agent completes (1750ms with LLM)          │
+├─────────────────────────────────────────────────────────────┤
+│ T=2550ms: Risk Agent starts                                 │
+│ T=2550ms: Queries Vector DB for patterns                    │
+├─────────────────────────────────────────────────────────────┤
+│ T=3150ms: Risk Agent completes (600ms)                      │
+├─────────────────────────────────────────────────────────────┤
+│ T=3200ms: Decision Agent starts                             │
+├─────────────────────────────────────────────────────────────┤
+│ T=3300ms: Decision Agent completes (100ms)                  │
+├─────────────────────────────────────────────────────────────┤
+│ T=3350ms: Orchestration consolidates results                │
+├─────────────────────────────────────────────────────────────┤
+│ T=3400ms: Response sent to API Gateway                      │
+├─────────────────────────────────────────────────────────────┤
+│ T=3420ms: Response sent to Frontend                         │
+│ TOTAL TIME: ~3.4 seconds                                    │
 └─────────────────────────────────────────────────────────────┘
-                     │
-                     │
-┌────────────────────▼───────────────────────────────────────┐
-│              DATA & STORAGE LAYER                           │
-│  - Document Processing                                     │
-│  - Temporary Storage                                       │
-│  - Cache Management                                        │
-└─────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 🔧 Component Overview
-
-### 1. Frontend (Port 3000)
+### Inter-Service Communication
 
 ```
-┌───────────────────────────────────────────┐
-│         FRONTEND - React Application      │
-├───────────────────────────────────────────┤
-│                                           │
-│  Technology: Node.js + React              │
-│  Purpose: User Interface                  │
-│                                           │
-│  Features:                                │
-│  ├─ Document Upload Interface             │
-│  ├─ Drag & Drop Support                   │
-│  ├─ Results Display                       │
-│  ├─ Process Status Tracking               │
-│  └─ Error Handling & Alerts               │
-│                                           │
-│  Port: 3000                              │
-│  Protocol: HTTP/REST                      │
-│  Server: Express.js                       │
-│                                           │
-└───────────────────────────────────────────┘
-         │
-         │ POST /process
-         │ Sends: Document + Metadata
-         ▼
-    API Gateway (8000)
-```
+Communication Pattern: Request-Response over HTTP
 
-### 2. API Gateway (Port 8000)
-
-```
-┌───────────────────────────────────────────┐
-│      API GATEWAY - FastAPI                │
-├───────────────────────────────────────────┤
-│                                           │
-│  Technology: Python FastAPI               │
-│  Purpose: Central API Entry Point         │
-│                                           │
-│  Functions:                               │
-│  ├─ Route Requests                        │
-│  ├─ Validate Input                        │
-│  ├─ Load Balance                          │
-│  ├─ Handle Errors                         │
-│  └─ Aggregate Responses                   │
-│                                           │
-│  Endpoints:                               │
-│  ├─ POST /process (document upload)      │
-│  ├─ GET /status (check processing)       │
-│  ├─ GET /health (health check)           │
-│  └─ GET /results (get results)           │
-│                                           │
-│  Port: 8000                              │
-│  Protocol: HTTP/REST                      │
-│  Framework: FastAPI                       │
-│                                           │
-└───────────────────────────────────────────┘
-         │
-         │ Forwards to Orchestration
-         ▼
-   Orchestration (8010)
-```
-
-### 3. Orchestration Service (Port 8010)
-
-```
-┌────────────────────────────────────────────┐
-│   ORCHESTRATION SERVICE - FastAPI          │
-├────────────────────────────────────────────┤
-│                                            │
-│  Technology: Python FastAPI                │
-│  Purpose: Workflow Orchestration           │
-│                                            │
-│  Responsibilities:                         │
-│  ├─ Coordinate Agent Calls                │
-│  ├─ Manage Workflow State                 │
-│  ├─ Handle Parallel Processing            │
-│  ├─ Manage Timeouts                       │
-│  └─ Return Aggregated Results             │
-│                                            │
-│  KYC Workflow:                             │
-│  1. Extract Text (Extract Agent)           │
-│  2. Verify Document (Verify Agent)        │
-│  3. Analyze Context (Reason Agent)        │
-│  4. Assess Risk (Risk Agent)              │
-│  5. Make Decision (Decision Agent)        │
-│                                            │
-│  Port: 8010                               │
-│  Protocol: HTTP/REST                       │
-│  Framework: FastAPI                        │
-│                                            │
-└────────────────────────────────────────────┘
-         │
-    ┌────┴────┬──────────┬──────────┬────────┐
-    │          │          │          │        │
-    ▼          ▼          ▼          ▼        ▼
-  8001       8002       8003       8004     8005
- Extract    Verify     Reason      Risk    Decision
- Agent      Agent      Agent       Agent   Agent
-```
-
-### 4. Agent Services (Microservices)
-
-```
-┌──────────────────────────────────────────────────┐
-│          MICROSERVICES LAYER                     │
-├──────────────────────────────────────────────────┤
-│                                                  │
-│  ┌─────────────────────────────────────────┐    │
-│  │ 1. EXTRACT AGENT (Port 8001)            │    │
-│  │    Purpose: Document Text Extraction    │    │
-│  │    Tech: FastAPI + Tesseract OCR        │    │
-│  │    Input: Document Image                │    │
-│  │    Output: Extracted Text               │    │
-│  │                                         │    │
-│  │ 2. VERIFY AGENT (Port 8002)             │    │
-│  │    Purpose: Document Verification       │    │
-│  │    Tech: FastAPI + Validation Rules     │    │
-│  │    Input: Extracted Text                │    │
-│  │    Output: Verification Result          │    │
-│  │                                         │    │
-│  │ 3. REASON AGENT (Port 8003)             │    │
-│  │    Purpose: Reasoning & Analysis        │    │
-│  │    Tech: FastAPI + LLM Integration      │    │
-│  │    Input: Document Data                 │    │
-│  │    Output: Analysis Results             │    │
-│  │                                         │    │
-│  │ 4. RISK AGENT (Port 8004)               │    │
-│  │    Purpose: Risk Assessment             │    │
-│  │    Tech: FastAPI + Risk Models          │    │
-│  │    Input: Document Analysis             │    │
-│  │    Output: Risk Score                   │    │
-│  │                                         │    │
-│  │ 5. DECISION AGENT (Port 8005)           │    │
-│  │    Purpose: Final Decision Making       │    │
-│  │    Tech: FastAPI + Decision Logic       │    │
-│  │    Input: Risk Score + Analysis         │    │
-│  │    Output: APPROVE/REJECT               │    │
-│  └─────────────────────────────────────────┘    │
-│                                                  │
-│  ┌─────────────────────────────────────────┐    │
-│  │ OLLAMA LLM SERVICE (Port 11434)          │    │
-│  │ Purpose: Language Model Inference        │    │
-│  │ Tech: Ollama Container                   │    │
-│  │ Models: Local LLM Models                 │    │
-│  │ Used by: Reason, Risk, Decision Agents   │    │
-│  └─────────────────────────────────────────┘    │
-│                                                  │
-└──────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────┐
-│     ALL SERVICES RUN IN DOCKER CONTAINERS        │
-│     Total: 9 Containers (8 services + orchestration)
-└──────────────────────────────────────────────────┘
-```
-
----
-
-## 📊 Data Flow Diagram
-
-### KYC Document Processing Flow
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ START: User uploads KYC Document                              │
-└────────────┬───────────────────────────────────────────────────┘
-             │
-             ▼ (HTTP POST)
-    ┌──────────────────┐
-    │  Frontend (3000) │
-    │  Upload Form     │
-    └────────┬─────────┘
-             │
-             ▼ (HTTP POST /process)
-    ┌──────────────────┐
-    │ API Gateway      │
-    │ (8000)           │
-    │ Validate Input   │
-    └────────┬─────────┘
-             │
-             ▼ (HTTP POST /orchestrate)
-    ┌──────────────────────────────────┐
-    │ Orchestration Service (8010)    │
-    │ Create Processing Pipeline      │
-    └────────┬───────────────────────┘
-             │
-    ┌────────┴────┬──────────┬──────────┬────────┐
-    │             │          │          │        │
-    ▼             ▼          ▼          ▼        ▼
-┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
-│Extract │  │        │  │        │  │        │  │        │
-│ (8001) │  │        │  │        │  │        │  │        │
-│        │  │        │  │        │  │        │  │        │
-│Extract │  │        │  │        │  │        │  │        │
-│ Text   │  │        │  │        │  │        │  │        │
-│        │  │        │  │        │  │        │  │        │
-│        ▼  │        │  │        │  │        │  │        │
-│ Output:   │        │  │        │  │        │  │        │
-│ Raw Text  │        │  │        │  │        │  │        │
-└────────┘  │        │  │        │  │        │  │        │
-    │       │        │  │        │  │        │  │        │
-    ▼       ▼        │  │        │  │        │  │        │
-    │   ┌────────┐   │  │        │  │        │  │        │
-    │   │ Verify │   │  │        │  │        │  │        │
-    │   │ (8002) │   │  │        │  │        │  │        │
-    │   │        │   │  │        │  │        │  │        │
-    │   │ Verify │   │  │        │  │        │  │        │
-    │   │ Format │   │  │        │  │        │  │        │
-    │   │        │   │  │        │  │        │  │        │
-    │   │        ▼   │  │        │  │        │  │        │
-    │   │ Output:    │  │        │  │        │  │        │
-    │   │ Verified   │  │        │  │        │  │        │
-    │   └────────┘   │  │        │  │        │  │        │
-    │       │        │  │        │  │        │  │        │
-    │       ▼        ▼  │        │  │        │  │        │
-    │       │    ┌────────┐      │  │        │  │        │
-    │       │    │ Reason │      │  │        │  │        │
-    │       │    │ (8003) │      │  │        │  │        │
-    │       │    │        │      │  │        │  │        │
-    │       │    │ Analyze│ (Uses Ollama)    │  │        │
-    │       │    │        │      │  │        │  │        │
-    │       │    │        ▼      │  │        │  │        │
-    │       │    │ Output:       │  │        │  │        │
-    │       │    │ Analysis      │  │        │  │        │
-    │       │    └────────┘      │  │        │  │        │
-    │       │        │           │  │        │  │        │
-    │       │        ▼           ▼  │        │  │        │
-    │       │        │       ┌────────┐     │  │        │
-    │       │        │       │ Risk   │     │  │        │
-    │       │        │       │ (8004) │     │  │        │
-    │       │        │       │        │     │  │        │
-    │       │        │       │ Assess │(Uses Ollama)     │
-    │       │        │       │ Risk   │     │  │        │
-    │       │        │       │        │     │  │        │
-    │       │        │       │        ▼     │  │        │
-    │       │        │       │ Output:      │  │        │
-    │       │        │       │ Risk Score   │  │        │
-    │       │        │       └────────┘     │  │        │
-    │       │        │           │          │  │        │
-    │       │        │           ▼          ▼  │        │
-    │       │        │           │      ┌────────┐      │
-    │       │        │           │      │Decision│      │
-    │       │        │           │      │ (8005) │      │
-    │       │        │           │      │        │      │
-    │       │        │           │      │ Decide │      │
-    │       │        │           │      │        │      │
-    │       │        │           │      │        ▼      │
-    │       │        │           │      │ Output:       │
-    │       │        │           │      │ APPROVE/REJECT
-    │       │        │           │      └────────┘      │
-    └───────┴────────┴───────────┴──────────────────────┘
-                                │
-                                ▼
-                    ┌──────────────────────┐
-                    │ Send Results to      │
-                    │ Frontend (8000)      │
-                    └────────┬─────────────┘
-                             │
-                             ▼
-                    ┌──────────────────────┐
-                    │ Display Results      │
-                    │ User sees Decision   │
-                    │ and Details          │
-                    └────────┬─────────────┘
-                             │
-                             ▼
-                    ┌──────────────────────┐
-                    │ END: Process         │
-                    │ Complete             │
-                    └──────────────────────┘
-```
-
----
-
-## 🔄 Communication Patterns
-
-### Synchronous Request-Response
-
-```
-Frontend (3000)
+API Gateway (8000)
     │
-    │ POST /process
-    │ {"document": "base64_data"}
-    │────────────────────────────────────────►
-                                             API Gateway (8000)
-                                             │
-                                             │ POST /orchestrate
-                                             │──────────────────────────►
-                                                     Orchestration (8010)
-                                                     │
-                                                     ├─► Extract (8001)
-                                                     │   Wait for response
-                                                     │
-                                                     ├─► Verify (8002)
-                                                     │   Wait for response
-                                                     │
-                                                     └─► Others...
-                                                     │
-                                         Response ◄──┘
-                                         │
-                                    Response ◄──
-                                             │
-Results Displayed ◄──────────────────────────┘
-```
-
-### Data Transfer Format
-
-```
-REQUEST:
-┌──────────────────────────────────┐
-│ HTTP POST /process               │
-│ Content-Type: application/json   │
-│                                  │
-│ {                                │
-│   "document": "base64_string",   │
-│   "document_type": "KYC",        │
-│   "client_id": "123",            │
-│   "metadata": {...}              │
-│ }                                │
-└──────────────────────────────────┘
-
-RESPONSE:
-┌──────────────────────────────────┐
-│ HTTP 200 OK                      │
-│ Content-Type: application/json   │
-│                                  │
-│ {                                │
-│   "status": "success",           │
-│   "document_type": "Aadhar",     │
-│   "confidence": 0.95,            │
-│   "decision": "APPROVED",        │
-│   "risk_score": 0.2,             │
-│   "processing_time": 1.5,        │
-│   "details": {...}               │
-│ }                                │
-└──────────────────────────────────┘
-```
+    └─→ POST http://orchestration-service:8010/process
+            │
+            ├─→ POST http://extract-agent:8001/extract
+            │
+            ├─→ POST http://verify-agent:8002/verify
+            │
+            ├─→ GET http://mcp-server:8020/context (for Reason)
+            │   └─→ Queries Vector DB internally
+            │
+            ├─→ POST http://reason-agent:8003/analyze
+            │
+            ├─→ POST http://risk-agent:8004/assess
+            │
+            ├─→ POST http://decision-agent:8005/decide
 
 ---
 
-## 🔗 Service Dependencies
+## 🚀 Deployment Architecture
 
-### Dependency Graph
-
-```
-                    Frontend (3000)
-                          │
-                          ▼
-                   API Gateway (8000)
-                          │
-                          ▼
-              Orchestration Service (8010)
-                          │
-              ┌─────────┬─┼─┬────────┬──────┐
-              │         │ │ │        │      │
-              ▼         ▼ ▼ ▼        ▼      ▼
-           Extract  Verify Reason  Risk   Decision
-           (8001)   (8002) (8003)  (8004) (8005)
-              │         │     │       │      │
-              │         │     └─────┬─┘      │
-              │         │           │       │
-              └─────────┴─────┬─────┴───────┘
-                              │
-                              ▼
-                        Ollama LLM (11434)
-                        (Shared Service)
-
-LEGEND:
-─────────────────
-→ Direct Call
-  ─ Shared Dependency
-```
-
-### Startup Order
+### Docker Container Architecture
 
 ```
-1. Start Ollama First (Port 11434)
-   └─ Required by: Reason, Risk, Decision Agents
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Host (kyc-network)                │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  Frontend    │  │ API Gateway  │  │ Orchestration│      │
+│  │  (3000)      │  │ (8000)       │  │ (8010)       │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                                                              │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │
+│  │Extract │ │ Verify │ │ Reason │ │  Risk  │ │Decision│   │
+│  │ (8001) │ │ (8002) │ │ (8003) │ │ (8004) │ │ (8005) │   │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘   │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │MCP Server    │  │ Validation   │  │ Vector DB    │      │
+│  │(8020)        │  │ Orchestrator │  │ (embedded)   │      │
+│  │              │  │ (8100)       │  │              │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                                                              │
+│  Validators:                                                 │
+│  ┌────────┐ ┌────────┐ ┌────────┐                           │
+│  │Val-1   │ │Val-2   │ │Val-3   │                           │
+│  │(8101)  │ │(8102)  │ │(8103)  │                           │
+│  └────────┘ └────────┘ └────────┘                           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+        All services on kyc-network bridge
+        Health checks every 15s
+        Auto-restart on failure
+```
 
-2. Start Individual Agents (Ports 8001-8005)
-   └─ Extract, Verify, Reason, Risk, Decision
+### Scaling Architecture
 
-3. Start Orchestration (Port 8010)
-   └─ Depends on: Agents
+```
+Horizontal Scaling:
+┌─────────────────────────────────────────────────────────────┐
+│                    Load Balancer                             │
+├─────────────────────────────────────────────────────────────┤
+│   ↓               ↓               ↓                          │
+│  API GW-1       API GW-2       API GW-3                     │
+│   ↓               ↓               ↓                          │
+│ Orch-1          Orch-2          Orch-3                      │
+│   ├─────┬─────┬──────┐          similar                     │
+│   │ Ext │Ver │Reason│  ...      structure                   │
+│   └─────┴─────┴──────┘                                      │
+└─────────────────────────────────────────────────────────────┘
 
-4. Start API Gateway (Port 8000)
-   └─ Depends on: Orchestration
-
-5. Start Frontend (Port 3000)
-   └─ Depends on: API Gateway
-
-All managed by Docker Compose!
+Agent-Specific Scaling:
+- Extract Agent: Scale for I/O bound operations
+- Reason Agent: Fewer instances (LLM resource intensive)
+- Risk Agent: Scale for pattern matching
+- Decision Agent: Scale minimally (CPU intensive)
 ```
 
 ---
 
 ## 💻 Technology Stack
 
-### Backend Services
+### Services
+- **Framework**: FastAPI (Python 3.11)
+- **Web Server**: Uvicorn
+- **Documentation**: Swagger/OpenAPI
+- **Health Checks**: HTTP endpoint checks
 
-```
-┌─────────────────────────────────────────┐
-│         TECHNOLOGY STACK                │
-├─────────────────────────────────────────┤
-│                                         │
-│ LANGUAGE & RUNTIME:                     │
-│ • Python 3.10+                          │
-│ • Node.js 16+                           │
-│                                         │
-│ WEB FRAMEWORKS:                         │
-│ • FastAPI (Python - API Services)       │
-│ • Express.js (Node.js - Frontend)       │
-│                                         │
-│ ASYNC/CONCURRENCY:                      │
-│ • asyncio (Python)                      │
-│ • uvicorn (ASGI server)                 │
-│                                         │
-│ OCR & TEXT PROCESSING:                  │
-│ • Tesseract OCR                         │
-│ • PIL/Pillow (Image Processing)         │
-│ • pytesseract (Tesseract Wrapper)       │
-│                                         │
-│ LLM & AI:                               │
-│ • Ollama (LLM Runtime)                  │
-│ • LLaMA/Mistral Models                  │
-│                                         │
-│ FRONTEND:                               │
-│ • React.js                              │
-│ • HTML/CSS/JavaScript                   │
-│                                         │
-│ CONTAINERIZATION:                       │
-│ • Docker                                │
-│ • Docker Compose                        │
-│                                         │
-│ LIBRARIES:                              │
-│ • requests (HTTP Client)                │
-│ • numpy/pandas (Data Processing)        │
-│ • scikit-learn (ML Models)              │
-│ • pydantic (Data Validation)            │
-│                                         │
-└─────────────────────────────────────────┘
-```
+### Data & Storage
+- **Vector DB**: ChromaDB (embedded)
+- **Data Format**: JSON
+- **Persistence**: File-based (kyc_vector_db/)
 
-### Dependencies by Service
+### AI/ML
+- **LLM Service**: Ollama (local)
+- **Default Model**: Mistral
+- **Embedding**: Via Ollama
 
-```
-Extract Agent (8001):
-  ├─ FastAPI
-  ├─ Tesseract OCR
-  ├─ PIL/Pillow
-  ├─ pytesseract
-  └─ pydantic
+### Frontend
+- **Runtime**: Node.js
+- **Port**: 3000
+- **Communication**: REST API calls to API Gateway
 
-Verify Agent (8002):
-  ├─ FastAPI
-  ├─ pydantic
-  └─ validation libraries
+### DevOps & Infrastructure
+- **Container**: Docker
+- **Orchestration**: Docker Compose
+- **Networking**: Docker bridge network (kyc-network)
+- **Health**: Container health checks + curl
+- **Logging**: Structured JSON logs
 
-Reason Agent (8003):
-  ├─ FastAPI
-  ├─ Ollama Client
-  ├─ LLM Integration
-  └─ pydantic
+### Agents Ports Mapping
 
-Risk Agent (8004):
-  ├─ FastAPI
-  ├─ Ollama Client
-  ├─ Scikit-learn
-  ├─ numpy
-  └─ pydantic
-
-Decision Agent (8005):
-  ├─ FastAPI
-  ├─ Ollama Client
-  ├─ Decision Logic
-  └─ pydantic
-
-Orchestration (8010):
-  ├─ FastAPI
-  ├─ HTTP Client
-  ├─ asyncio
-  └─ pydantic
-
-API Gateway (8000):
-  ├─ FastAPI
-  ├─ HTTP Client
-  └─ pydantic
-
-Frontend (3000):
-  ├─ React
-  ├─ Axios/Fetch
-  ├─ CSS Frameworks
-  └─ UI Libraries
-
-Ollama (11434):
-  ├─ Go Runtime
-  ├─ LLaMA/Mistral Models
-  └─ Vector Processing
-```
+| Service | External Port | Internal Port | Purpose |
+|---------|---------------|---------------|---------|
+| Frontend | 3000 | 3000 | Web UI |
+| API Gateway | 8000 | 8000 | Entry point |
+| Extract Agent | 8001 | 8000 | Data extraction |
+| Verify Agent | 8002 | 8000 | Data verification |
+| Reason Agent | 8003 | 8000 | AI reasoning |
+| Risk Agent | 8004 | 8000 | Risk assessment |
+| Decision Agent | 8005 | 8000 | Final decision |
+| Orchestration | 8010 | 8010 | Workflow engine |
+| MCP Server | 8020 | 8020 | Tools/RAG |
+| Validation Orch | 8100 | 8001 | Validation coord |
+| Validator-1 | 8101 | 8001 | Pattern validator |
+| Validator-2 | 8102 | 8002 | Fuzzy validator |
+| Validator-3 | 8103 | 8003 | AI validator |
 
 ---
 
-## 🐳 Deployment Architecture
-
-### Docker Container Structure
-
-```
-┌─────────────────────────────────────────────────────────┐
-│           DOCKER COMPOSE CONFIGURATION                  │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  Version: 3.8                                           │
-│  Network: kyc-network (bridge)                          │
-│                                                         │
-│  Services:                                              │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-frontend                                     │   │
-│  │ ├─ Image: node:16-slim                          │   │
-│  │ ├─ Container: kyc-frontend                      │   │
-│  │ ├─ Ports: 3000:3000                             │   │
-│  │ ├─ Env: NODE_ENV=production                     │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-api-gateway                                 │   │
-│  │ ├─ Image: kyc-agentic-ai-api-gateway            │   │
-│  │ ├─ Container: kyc-api-gateway                   │   │
-│  │ ├─ Ports: 8000:8000                             │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-orchestration-service                       │   │
-│  │ ├─ Image: kyc-agentic-ai-orchestration-service │   │
-│  │ ├─ Container: kyc-orchestration-service         │   │
-│  │ ├─ Ports: 8010:8010                             │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-extract-agent                               │   │
-│  │ ├─ Image: kyc-agentic-ai-extract-agent          │   │
-│  │ ├─ Container: kyc-extract-agent                 │   │
-│  │ ├─ Ports: 8001:8000                             │   │
-│  │ ├─ Volumes: /usr/share/tesseract-ocr            │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-verify-agent                                │   │
-│  │ ├─ Image: kyc-agentic-ai-verify-agent           │   │
-│  │ ├─ Container: kyc-verify-agent                  │   │
-│  │ ├─ Ports: 8002:8000                             │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-reason-agent                                │   │
-│  │ ├─ Image: kyc-agentic-ai-reason-agent           │   │
-│  │ ├─ Container: kyc-reason-agent                  │   │
-│  │ ├─ Ports: 8003:8000                             │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-risk-agent                                  │   │
-│  │ ├─ Image: kyc-agentic-ai-risk-agent             │   │
-│  │ ├─ Container: kyc-risk-agent                    │   │
-│  │ ├─ Ports: 8004:8000                             │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-decision-agent                              │   │
-│  │ ├─ Image: kyc-agentic-ai-decision-agent         │   │
-│  │ ├─ Container: kyc-decision-agent                │   │
-│  │ ├─ Ports: 8005:8000                             │   │
-│  │ ├─ Env: PYTHONUNBUFFERED=1                      │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ kyc-ollama                                      │   │
-│  │ ├─ Image: ollama/ollama:latest                  │   │
-│  │ ├─ Container: kyc-ollama                        │   │
-│  │ ├─ Ports: 11434:11434                           │   │
-│  │ ├─ Volumes: /root/.ollama                       │   │
-│  │ └─ Health Check: ✓                              │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                         │
-│  Network: kyc-network (all containers connected)       │
-│  Volume Management: Docker volumes for persistence     │
-│  Restart Policy: always                                │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🔒 Security Architecture
+## 🔐 Security Considerations
 
 ### Network Security
+- All services on internal Docker network
+- External access only through API Gateway
+- Port restrictions and firewalls
 
-```
-┌─────────────────────────────────────────┐
-│     SECURITY ARCHITECTURE               │
-├─────────────────────────────────────────┤
-│                                         │
-│ NETWORK LAYER:                          │
-│ • Docker Bridge Network (kyc-network)   │
-│ • Isolated Container Communication      │
-│ • No Direct Internet Access (Optional)  │
-│                                         │
-│ API LAYER:                              │
-│ • CORS Configuration                    │
-│ • Request Validation                    │
-│ • Rate Limiting (Optional)              │
-│ • Input Sanitization                    │
-│                                         │
-│ DATA LAYER:                             │
-│ • Document Encryption (Optional)        │
-│ • Secure File Storage                   │
-│ • Temporary File Cleanup                │
-│                                         │
-│ ACCESS CONTROL:                         │
-│ • Container Isolation                   │
-│ • Port Exposure Control                 │
-│ • Environment Variable Security         │
-│                                         │
-│ MONITORING:                             │
-│ • Health Checks per Service             │
-│ • Log Aggregation                       │
-│ • Error Tracking                        │
-│                                         │
-└─────────────────────────────────────────┘
+### Data Security
+- Request validation at API Gateway
+- Input sanitization in each agent
+- Audit logging for all operations
+- TraceID for request correlation
+
+### Service Security
+- Health checks for availability
+- Auto-restart on failure
+- Resource limits per container
+- Environment-based configuration
+
+---
+
+## 📈 Performance Characteristics
+
+### Request Processing Timeline
+- **Extract**: 150ms (document parsing)
+- **Verify**: 400ms (validation + lookups)
+- **Reason**: 1750ms (LLM analysis)
+- **Risk**: 600ms (scoring + checks)
+- **Decision**: 100ms (logic + rules)
+- **Overhead**: ~400ms (orchestration + network)
+- **Total**: ~3400ms average
+
+### Scalability
+- **Concurrent Requests**: Limited by orchestrator
+- **Throughput**: ~20 requests/minute (3.4s/request)
+- **Agent Scaling**: Independent scaling possible
+- **Bottleneck**: LLM-based Reason Agent
+
+---
+
+## 📊 System Metrics
+
+### Monitoring Points
+- Service health (availability)
+- Request latency (p50, p95, p99)
+- Error rates (by agent)
+- Decision distribution (approved/rejected)
+- Validation tier distribution
+- Resource usage (CPU, memory)
+
+### Logging
+- Structured JSON format
+- TraceID for correlation
+- Timestamp in ISO 8601
+- Level: INFO, WARNING, ERROR, DEBUG
+
+---
+
+## 🎯 Key Design Decisions
+
+### Why Microservices?
+- Independent scaling per agent
+- Fault isolation
+- Easy to add/remove agents
+- Technology flexibility
+
+### Why Orchestrator Service?
+- Central coordination point
+- State management
+- Simplified client interface
+- Easier to change workflow
+
+### Why Validation Pipeline?
+- Multi-tiered approach for reliability
+- Fast path for good data
+- AI fallback for edge cases
+- Ensures data quality
+
+### Why Vector DB?
+- Semantic search capabilities
+- Historical pattern matching
+- Efficient policy lookup
+- RAG support for Reason Agent
+
+---
+
+## 🚀 Deployment Process
+
+### Local Deployment
+```bash
+docker-compose up -d
+# Services start on ports 3000, 8000-8005, 8010, 8020, 8100-8103
 ```
 
-### Data Flow Security
-
+### Docker Hub Deployment
+```bash
+docker pull username/kyc-orchestrator:latest
+docker pull username/kyc-extract-agent:latest
+# etc...
+docker-compose -f docker-compose.prod.yml up -d
 ```
-Client Input
-    │
-    ▼ (VALIDATE)
-┌─────────────────┐
-│ Input Validation│
-│ • Type Check    │
-│ • Size Check    │
-│ • Format Check  │
-└────────┬────────┘
-         │ (SANITIZE)
-         ▼
-┌─────────────────┐
-│ Sanitization    │
-│ • Remove Inject │
-│ • Clean Paths   │
-│ • Verify Origin │
-└────────┬────────┘
-         │ (PROCESS)
-         ▼
-┌─────────────────┐
-│ Process in Agent│
-│ • Isolated      │
-│ • Containerized │
-│ • Limited Access│
-└────────┬────────┘
-         │ (SECURE)
-         ▼
-┌─────────────────┐
-│ Return Response │
-│ • Sanitized     │
-│ • Validated     │
-│ • Secure        │
-└────────┬────────┘
-         │
-         ▼
-Client Response
+
+### Kubernetes Deployment
+```bash
+kubectl apply -f kube-manifests/
+# Services scheduled across nodes
+# Auto-scaling based on metrics
+# Rolling updates for zero downtime
 ```
 
 ---
 
-## 📈 Scaling & Performance
+## 🔍 Troubleshooting
 
-### Horizontal Scaling
+### Service Unavailable
+1. Check service health: `curl http://localhost:8000/health`
+2. View logs: `docker logs service-name`
+3. Check network: `docker network inspect kyc-network`
+4. Restart service: `docker restart service-name`
 
-```
-┌──────────────────────────────────────────┐
-│    CURRENT ARCHITECTURE (Single Host)    │
-│                                          │
-│  Frontend ── Gateway ── Orchestration    │
-│                            │             │
-│              ┌─────────────┼─────────┐   │
-│              ▼             ▼         ▼   │
-│          Agents (5)    Ollama (1)       │
-│                                          │
-│  Single Docker Compose Setup             │
-└──────────────────────────────────────────┘
+### Slow Response Time
+1. Check Reason Agent (LLM bottleneck)
+2. Monitor resource usage: `docker stats`
+3. Check Vector DB queries
+4. Scale agents horizontally
 
-┌──────────────────────────────────────────┐
-│    SCALABLE ARCHITECTURE (Multi-Host)    │
-│                                          │
-│  Load Balancer                           │
-│     │                                    │
-│     ├─► Frontend Cluster                │
-│     ├─► API Gateway Cluster             │
-│     ├─► Orchestration Cluster           │
-│     └─► Agent Cluster                   │
-│          │                              │
-│          ├─► Extract (3 instances)      │
-│          ├─► Verify (2 instances)       │
-│          └─► Decision (2 instances)     │
-│                                          │
-│  Shared: Ollama LLM Service              │
-│                                          │
-│  Orchestration: Kubernetes               │
-└──────────────────────────────────────────┘
-```
+### High Error Rates
+1. Check input validation
+2. Review agent logs for errors
+3. Check external service availability
+4. Verify model availability (Ollama)
 
 ---
 
-## 📊 Architecture Summary
+## 📚 Related Documentation
 
-```
-┌─────────────────────────────────────────────────────────┐
-│           ARCHITECTURE SUMMARY TABLE                     │
-├─────────────────────────────────────────────────────────┤
-│ Layer          │ Component        │ Technology          │
-├────────────────┼──────────────────┼─────────────────────┤
-│ Presentation   │ Frontend         │ React + Express    │
-│ API            │ Gateway          │ FastAPI            │
-│ Orchestration  │ Coordinator      │ FastAPI            │
-│ Microservices  │ Extract          │ FastAPI + Tesseract│
-│                │ Verify           │ FastAPI            │
-│                │ Reason           │ FastAPI + LLM      │
-│                │ Risk             │ FastAPI + LLM      │
-│                │ Decision         │ FastAPI + LLM      │
-│ AI/ML          │ LLM Service      │ Ollama             │
-│ Container      │ Orchestration    │ Docker Compose     │
-│ Deployment     │ Infrastructure   │ Docker Containers  │
-└─────────────────────────────────────────────────────────┘
-```
+- **README.md** - Project overview
+- **DEPLOYMENT_GUIDE.md** - Detailed deployment
+- **QUICK_REFERENCE.md** - Quick commands
+- **docker-compose.yml** - Service definitions
 
 ---
 
-## 🎯 Key Architectural Principles
-
-```
-1. MICROSERVICES PATTERN
-   ✓ Each service: Single responsibility
-   ✓ Independent deployment
-   ✓ Technology flexibility
-
-2. API-FIRST DESIGN
-   ✓ RESTful APIs
-   ✓ Standard JSON format
-   ✓ Clear contracts
-
-3. CONTAINERIZATION
-   ✓ Consistent environments
-   ✓ Easy deployment
-   ✓ Simplified scaling
-
-4. ORCHESTRATION
-   ✓ Centralized workflow
-   ✓ Error handling
-   ✓ Result aggregation
-
-5. SCALABILITY
-   ✓ Stateless services
-   ✓ Horizontal scaling
-   ✓ Load balancing
-
-6. RELIABILITY
-   ✓ Health checks
-   ✓ Graceful degradation
-   ✓ Error recovery
-```
-
----
-
-**Architecture Documentation Version:** 1.0  
-**Last Updated:** March 23, 2026  
-**Status:** ✅ Production Ready
+**This is the complete architecture of the KYC Agentic AI system - a modern, scalable, and intelligent customer verification platform.** ✅
 
