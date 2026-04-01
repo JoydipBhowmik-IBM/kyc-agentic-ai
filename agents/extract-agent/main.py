@@ -8,6 +8,7 @@ from document_validator import DocumentValidator
 import mimetypes
 import subprocess
 import os
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,6 +17,53 @@ app = FastAPI(title="Extract Agent", version="1.0.0")
 validator = DocumentValidator()
 
 SUPPORTED_FORMATS = ['image/jpeg', 'image/png', 'image/tiff', 'image/webp', 'image/avif', 'image/x-avif']
+
+def detect_photo_in_document(image: Image.Image) -> bool:
+    """
+    Detect if document contains a photo/image area
+    Returns True if a photo is detected
+    """
+    try:
+        # Convert image to numpy array for analysis
+        img_array = np.array(image)
+        
+        # For RGB images, check color variation
+        if len(img_array.shape) == 3:
+            # Calculate standard deviation of pixel values (indicates variation/detail)
+            # Photos have higher pixel variation than plain text
+            std_dev = np.std(img_array)
+            
+            # Also check if the image has enough color diversity
+            # (photos have varied colors, text areas are more uniform)
+            if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
+                # Calculate color range (max - min) for each channel
+                color_ranges = []
+                for channel in range(min(3, img_array.shape[2])):
+                    channel_data = img_array[:, :, channel]
+                    color_range = np.max(channel_data) - np.min(channel_data)
+                    color_ranges.append(color_range)
+                
+                avg_color_range = np.mean(color_ranges)
+                
+                # Photo detected if there's significant color variation
+                has_photo = std_dev > 20 and avg_color_range > 50
+            else:
+                # For grayscale, just check std dev
+                has_photo = std_dev > 25
+            
+            logger.info(f"Photo detection - Std Dev: {std_dev:.2f}, Color Range: {avg_color_range:.2f if 'avg_color_range' in locals() else 'N/A'}, Has Photo: {has_photo}")
+            return has_photo
+        else:
+            # Grayscale image
+            std_dev = np.std(img_array)
+            has_photo = std_dev > 25
+            logger.info(f"Photo detection (grayscale) - Std Dev: {std_dev:.2f}, Has Photo: {has_photo}")
+            return has_photo
+    
+    except Exception as e:
+        logger.error(f"Photo detection error: {str(e)}")
+        # If detection fails, assume no photo (safer for validation)
+        return False
 
 @app.get("/health")
 async def health():
@@ -134,6 +182,10 @@ async def extract(file: UploadFile = File(...)):
         
         if not validation_result['is_valid_kyc']:
             logger.warning(f"Invalid KYC document: {validation_result['reason']}")
+            
+            # Still detect photo even if document is invalid
+            has_photo = detect_photo_in_document(image)
+            
             return {
                 "status": "invalid_document",
                 "text": text,
@@ -144,11 +196,18 @@ async def extract(file: UploadFile = File(...)):
                 "confidence": validation_result['confidence'],
                 "reason": validation_result['reason'],
                 "all_scores": validation_result['all_scores'],
+                "has_photo": has_photo,
+                "has_image_data": has_photo,
                 "message": f"This does not appear to be a valid KYC document. {validation_result['reason']}",
                 "timestamp": datetime.now().isoformat()
             }
 
         logger.info(f"Successfully extracted {len(text)} characters from {validation_result['document_type']}")
+        
+        # CRITICAL: Detect if photo is present in the document
+        has_photo = detect_photo_in_document(image)
+        logger.info(f"Photo detection result: {has_photo}")
+        
         return {
             "status": "success",
             "text": text,
@@ -160,6 +219,8 @@ async def extract(file: UploadFile = File(...)):
             "reason": validation_result['reason'],
             "extracted_patterns": validation_result['extracted_patterns'],
             "all_scores": validation_result['all_scores'],
+            "has_photo": has_photo,  # NEW: Photo detection result
+            "has_image_data": has_photo,  # NEW: For compatibility
             "timestamp": datetime.now().isoformat()
         }
 
