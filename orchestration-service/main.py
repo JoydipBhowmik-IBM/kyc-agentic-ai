@@ -109,6 +109,26 @@ async def process(file: UploadFile = File(...)):
         logger.info(f"  - confidence: {extract_result.get('confidence')}")
         logger.info(f"  - is_valid_kyc: {extract_result.get('is_valid_kyc')} ← CRITICAL FLAG")
 
+        # Check if document type is unknown
+        if extract_result.get("document_type") == "Unknown":
+            logger.warning("❌ Document type identified as 'Unknown' - rejecting without calling other agents")
+            workflow_data["final_status"] = "rejected"
+            workflow_data["rejection_reason"] = "Document type is 'Unknown' - cannot process unknown or invalid documents. Please submit a valid KYC document (PAN, Aadhar, Passport, Driving License, Voter ID, Bank Statement, or Utility Bill)."
+            workflow_data["document_type"] = "Unknown"
+            workflow_data["confidence"] = extract_result.get('confidence', 0.0)
+            # Set explicit rejected decision for unknown documents
+            workflow_data["decision"] = {
+                "status": "rejected",
+                "decision": "REJECTED",
+                "reason": workflow_data["rejection_reason"],
+                "confidence": 1.0,
+                "regulatory_action": "REJECT"
+            }
+            elapsed_time = (datetime.now() - start_time).total_seconds()
+            workflow_data["processing_time_seconds"] = elapsed_time
+            logger.info(f"Unknown document type - Workflow terminated in {elapsed_time}s")
+            return workflow_data
+
         # Check if document is a valid KYC document
         if extract_result.get("status") == "invalid_document":
             logger.error(f"Invalid KYC document: {extract_result.get('reason')}")
@@ -160,6 +180,26 @@ async def process(file: UploadFile = File(...)):
 
         if "error" in verify_result:
             logger.error(f"Verification failed: {verify_result['error']}")
+
+        # Check if verification failed - reject immediately
+        if not verify_result.get("verified", True) or not verify_result.get("is_valid_kyc", True):
+            logger.warning("❌ Verification failed - rejecting workflow")
+            workflow_data["final_status"] = "rejected"
+            workflow_data["rejection_reason"] = verify_result.get("reason", "Verification failed")
+            workflow_data["document_type"] = verify_result.get("document_type", extract_result.get("document_type"))
+            workflow_data["confidence"] = verify_result.get("confidence_score", 0.0)
+            # Set explicit rejected decision
+            workflow_data["decision"] = {
+                "status": "rejected",
+                "decision": "REJECTED",
+                "reason": workflow_data["rejection_reason"],
+                "confidence": 1.0,
+                "regulatory_action": "REJECT"
+            }
+            elapsed_time = (datetime.now() - start_time).total_seconds()
+            workflow_data["processing_time_seconds"] = elapsed_time
+            logger.info(f"Verification failed - Workflow terminated in {elapsed_time}s")
+            return workflow_data
 
         # Step 3: Reason (LLM Analysis)
         logger.info("Step 3: Performing LLM analysis...")

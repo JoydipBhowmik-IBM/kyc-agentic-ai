@@ -103,28 +103,32 @@ if errorlevel 1 (
 echo [SUCCESS] All Docker images built successfully >> "%LOG_FILE%"
 echo.
 echo =====================================================================
-echo STEP 4: Starting Containers
+echo STEP 4: Starting Containers with Live Log Monitoring
 echo =====================================================================
 echo. >> "%LOG_FILE%"
 echo ===================================================================== >> "%LOG_FILE%"
-echo STEP 4: Starting Containers >> "%LOG_FILE%"
+echo STEP 4: Starting Containers with Live Log Monitoring >> "%LOG_FILE%"
 echo ===================================================================== >> "%LOG_FILE%"
-docker-compose up -d >>"%LOG_FILE%" 2>&1
-if errorlevel 1 (
-    echo [ERROR] Failed to start containers
-    goto error_exit
-)
-echo [SUCCESS] All containers started successfully >> "%LOG_FILE%"
-timeout /t 30 /nobreak
+
+echo [INFO] Starting all services with live log monitoring in current terminal...
+echo [INFO] All service logs will be displayed here with service names prefixed.
+echo [INFO] Press Ctrl+C to stop all services and exit.
+echo.
+
+docker-compose up
+
 echo.
 echo =====================================================================
-echo All services deployed successfully!
+echo Services stopped. Deployment complete.
 echo =====================================================================
 echo.
-echo Services are now running. Access points:
+echo If you need to restart services, run: docker-compose up -d
+echo Access points (when services are running):
 echo   Frontend:                http://localhost:3000
 echo   API Gateway:             http://localhost:8000
+echo   Orchestration Service:   http://localhost:8010
 echo.
+
 pause
 exit /b 0
 :error_exit

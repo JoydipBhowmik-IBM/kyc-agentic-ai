@@ -6,15 +6,31 @@ Provides tools for retrieving KYC rules, fraud patterns, and vector DB context
 import json
 import logging
 from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 import os
 from datetime import datetime
 
+# Custom JSON encoder to handle ChromaDB objects
+class ChromaDBSafeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        try:
+            # Try the default encoder first
+            return super().default(obj)
+        except TypeError:
+            # If it fails, try to convert to a safe representation
+            if hasattr(obj, '__dict__'):
+                return str(obj)
+            elif hasattr(obj, 'items'):
+                return dict(obj)
+            else:
+                return str(obj)
+
 # Try to import chromadb for vector database
 try:
     import chromadb
-    CHROMADB_AVAILABLE = True
+    CHROMADB_AVAILABLE = True  # Re-enable ChromaDB with proper handling
 except ImportError:
     CHROMADB_AVAILABLE = False
 
@@ -336,26 +352,45 @@ async def retrieve_kyc_rules(query: RetrievalQuery) -> MCPToolResult:
                 where_document=None
             )
             
-            for i, rule_id in enumerate(query_result["ids"][0] if query_result["ids"] else []):
-                result_item = {
-                    "rule_id": rule_id,
-                    "title": query_result["metadatas"][0][i].get("title", ""),
-                    "description": query_result["documents"][0][i] if query_result["documents"] else "",
-                    "document_type": query_result["metadatas"][0][i].get("document_type", ""),
-                    "country": query_result["metadatas"][0][i].get("country", ""),
-                    "requirement": query_result["metadatas"][0][i].get("requirement", ""),
-                    "priority": query_result["metadatas"][0][i].get("priority", ""),
-                    "distance": query_result["distances"][0][i] if query_result.get("distances") else None
-                }
-                
-                # Apply filters if specified
-                if query.document_type and result_item["document_type"] != query.document_type:
-                    continue
-                if query.country and result_item["country"] != query.country:
-                    continue
+            # Extract results safely
+            ids = query_result.get("ids", [[]])
+            metadatas = query_result.get("metadatas", [[]])
+            documents = query_result.get("documents", [[]])
+            distances = query_result.get("distances", [[]])
+            
+            for i in range(len(ids[0]) if ids and len(ids) > 0 else 0):
+                try:
+                    metadata = metadatas[0][i] if metadatas and len(metadatas) > 0 and i < len(metadatas[0]) else {}
+                    document = documents[0][i] if documents and len(documents) > 0 and i < len(documents[0]) else ""
+                    distance = distances[0][i] if distances and len(distances) > 0 and i < len(distances[0]) else None
                     
-                results.append(result_item)
-        
+                    # Safely extract metadata as plain dict
+                    metadata_dict = {}
+                    if metadatas and len(metadatas) > 0 and i < len(metadatas[0]):
+                        raw_metadata = metadatas[0][i]
+                        if isinstance(raw_metadata, dict):
+                            metadata_dict = raw_metadata.copy()  # Create a copy to avoid reference issues
+                        elif hasattr(raw_metadata, 'items'):
+                            try:
+                                metadata_dict = dict(raw_metadata)  # Convert to plain dict
+                            except Exception:
+                                metadata_dict = {}
+                    
+                    result_item = {
+                        "rule_id": str(ids[0][i]) if ids and len(ids) > 0 and i < len(ids[0]) else "",
+                        "title": str(metadata_dict.get("title", "")),
+                        "description": str(document),
+                        "document_type": str(metadata_dict.get("document_type", "")),
+                        "country": str(metadata_dict.get("country", "")),
+                        "requirement": str(metadata_dict.get("requirement", "")),
+                        "priority": str(metadata_dict.get("priority", "")),
+                        "distance": float(distance) if distance is not None and str(distance).replace('.', '').isdigit() else None
+                    }
+                    
+                    results.append(result_item)
+                except Exception as e:
+                    logger.warning(f"Error processing KYC rule result {i}: {e}")
+                    continue
         else:
             # Fallback to in-memory search
             for rule in kyc_rules_storage:
@@ -420,18 +455,44 @@ async def retrieve_fraud_patterns(query: RetrievalQuery) -> MCPToolResult:
                 n_results=query.top_k
             )
             
-            for i, pattern_id in enumerate(query_result["ids"][0] if query_result["ids"] else []):
-                result_item = {
-                    "pattern_id": pattern_id,
-                    "pattern_name": query_result["metadatas"][0][i].get("pattern_name", ""),
-                    "description": query_result["documents"][0][i] if query_result["documents"] else "",
-                    "indicators": query_result["metadatas"][0][i].get("indicators", "").split(","),
-                    "risk_level": query_result["metadatas"][0][i].get("risk_level", ""),
-                    "detection_method": query_result["metadatas"][0][i].get("detection_method", ""),
-                    "distance": query_result["distances"][0][i] if query_result.get("distances") else None
-                }
-                results.append(result_item)
-        
+            # Extract results safely
+            ids = query_result.get("ids", [[]])
+            metadatas = query_result.get("metadatas", [[]])
+            documents = query_result.get("documents", [[]])
+            distances = query_result.get("distances", [[]])
+            
+            for i in range(len(ids[0]) if ids and len(ids) > 0 else 0):
+                try:
+                    metadata = metadatas[0][i] if metadatas and len(metadatas) > 0 and i < len(metadatas[0]) else {}
+                    document = documents[0][i] if documents and len(documents) > 0 and i < len(documents[0]) else ""
+                    distance = distances[0][i] if distances and len(distances) > 0 and i < len(distances[0]) else None
+                    
+                    # Safely extract metadata as plain dict
+                    metadata_dict = {}
+                    if metadatas and len(metadatas) > 0 and i < len(metadatas[0]):
+                        raw_metadata = metadatas[0][i]
+                        if isinstance(raw_metadata, dict):
+                            metadata_dict = raw_metadata.copy()  # Create a copy to avoid reference issues
+                        elif hasattr(raw_metadata, 'items'):
+                            try:
+                                metadata_dict = dict(raw_metadata)  # Convert to plain dict
+                            except Exception:
+                                metadata_dict = {}
+                    
+                    result_item = {
+                        "pattern_id": str(ids[0][i]) if ids and len(ids) > 0 and i < len(ids[0]) else "",
+                        "pattern_name": str(metadata_dict.get("pattern_name", "")),
+                        "description": str(document),
+                        "indicators": str(metadata_dict.get("indicators", "")).split(",") if metadata_dict.get("indicators") else [],
+                        "risk_level": str(metadata_dict.get("risk_level", "")),
+                        "detection_method": str(metadata_dict.get("detection_method", "")),
+                        "distance": float(distance) if distance is not None and str(distance).replace('.', '').isdigit() else None
+                    }
+                    
+                    results.append(result_item)
+                except Exception as e:
+                    logger.warning(f"Error processing fraud pattern result {i}: {e}")
+                    continue
         else:
             # Fallback to in-memory search
             for pattern in fraud_patterns_storage:
@@ -544,16 +605,7 @@ async def retrieve_from_vector_db(query: RetrievalQuery) -> MCPToolResult:
 @app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "mcp-server",
-        "version": "1.0.0",
-        "vector_db_enabled": CHROMADB_AVAILABLE,
-        "collections_initialized": {
-            "kyc_rules": len(kyc_rules_storage) > 0 or (CHROMADB_AVAILABLE and kyc_rules_collection),
-            "fraud_patterns": len(fraud_patterns_storage) > 0 or (CHROMADB_AVAILABLE and fraud_patterns_collection)
-        }
-    }
+    return {"status": "healthy"}
 
 @app.get("/tools")
 async def list_tools():
@@ -625,7 +677,27 @@ async def startup_event():
     
     logger.info("✓ MCP Server ready")
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8020)
+def safe_metadata_to_dict(metadata):
+    """Safely convert ChromaDB metadata to plain dict"""
+    try:
+        if hasattr(metadata, 'items'):  # dict-like object
+            return {str(k): str(v) for k, v in metadata.items()}
+        elif isinstance(metadata, dict):
+            return {str(k): str(v) for k, v in metadata.items()}
+        else:
+            return {}
+    except Exception:
+        return {}
 
+def safe_get_metadata_field(metadata, key, default=""):
+    """Safely get a field from metadata"""
+    try:
+        safe_metadata = safe_metadata_to_dict(metadata)
+        value = safe_metadata.get(key, default)
+        # Ensure the value is a basic type
+        if isinstance(value, (str, int, float, bool, type(None))):
+            return value
+        else:
+            return str(value)
+    except Exception:
+        return default
