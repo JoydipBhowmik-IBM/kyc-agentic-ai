@@ -204,17 +204,39 @@ class DecisionEngine:
         if confidence_score == 0.0:
             confidence_score = data.get("confidence", 0.0)
         
-        logger.info(f"make_decision - verified: {verified}, confidence_score: {confidence_score:.2%}")
+        logger.info(f"make_decision - verified: {verified}, confidence_score: {confidence_score:.2f}")
         
-        # Primary check: Verification status WITH confidence override
-        # If confidence is high (>=0.8), allow conditional approval even if verification failed on minor check
+        # FIRST CHECK: Is this a fraudulent document?
+        fraud_detected = data.get("fraud_detected", False)
+        fraud_indicators = data.get("fraud_indicators", [])
+        
+        if fraud_detected and fraud_indicators:
+            logger.error(f"🛑 FRAUDULENT DOCUMENT - AUTOMATIC REJECTION: {fraud_indicators}")
+            rule = self.DECISION_RULES["critical_risk"]
+            result = self.format_decision(rule, risk_score)
+            result["reason"] = f"KYC REJECTED - FRAUDULENT DOCUMENT: {', '.join(fraud_indicators)}"
+            result["regulatory_action"] = "REJECT_AND_ESCALATE"
+            return result
+        
+        # CRITICAL CHECK: Missing mandatory fields (especially photo) = AUTOMATIC REJECTION
+        # This only applies if extract agent explicitly rejected the document
+        critical_failures = data.get("critical_failures", [])
+        if critical_failures and len(critical_failures) > 0:
+            logger.error(f"🛑 CRITICAL FIELD MISSING - AUTOMATIC REJECTION: {critical_failures}")
+            rule = self.DECISION_RULES["critical_risk"]
+            result = self.format_decision(rule, risk_score)
+            result["reason"] = f"KYC REJECTED - CRITICAL ELEMENT MISSING: {', '.join(critical_failures)} - Cannot approve without complete documentation"
+            return result
+        
+        # Primary check: Verification status
+        # Use confidence to allow borderline documents to proceed through risk assessment
         if not verified:
-            if confidence_score >= 0.8:
-                logger.info(f"Verification failed but confidence is high ({confidence_score:.2%}), allowing conditional review")
-                rule = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
-                return self.format_decision(rule, risk_score)
+            if confidence_score >= 0.80:
+                # High confidence extraction - allow to proceed to risk assessment
+                logger.info(f"Verification flagged but confidence is high ({confidence_score:.2f}) - proceeding with risk assessment")
+                verified = True
             else:
-                logger.warning(f"Verification failed and confidence is low ({confidence_score:.2%}), rejecting")
+                logger.warning(f"Verification failed and confidence is low ({confidence_score:.2f}), rejecting")
                 rule = self.DECISION_RULES["verification_failed"]
                 return self.format_decision(rule, risk_score)
         

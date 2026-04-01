@@ -133,10 +133,41 @@ async def verify(data: Dict[str, Any]):
 
         # MANDATORY FIELD CHECK: This is NON-NEGOTIABLE for compliance
         missing_fields = validations.get("missing_fields", [])
+        critical_failures = []  # NEW: Track ONLY truly critical failures
+        
+        # CRITICAL FAILURES: Only these are show-stoppers
+        # These are failures that make the document unsuitable for KYC under any circumstances
+        document_type = data.get("document_type", "").lower()
+        
+        # Check 1: PHOTO is CRITICAL for all PAN/KYC documents if extract-agent found none
+        if document_type == "pan":
+            has_photo = data.get("has_photo", False)
+            has_image_data = data.get("has_image_data", False)
+            
+            if not (has_photo or has_image_data):
+                critical_failures.append("MISSING PHOTO/IMAGE (Required for PAN card)")
+                logger.error(f"🛑 CRITICAL: PAN card missing photo")
+        
+        # Check 2: Document validation failed by extract agent
+        # (e.g., watermarks, fraud detected)
+        if not data.get("is_valid_kyc", False):
+            # Only mark as critical if extract agent explicitly rejected it
+            extract_status = data.get("status", "")
+            if extract_status in ["invalid_document", "rejected_no_photo"]:
+                reason = data.get("reason", "")
+                if "fraud" in reason.lower() or "watermark" in reason.lower() or "sample" in reason.lower():
+                    critical_failures.append(f"Document authentication failed: {reason}")
+                    logger.error(f"🛑 CRITICAL: {reason}")
+        
+        # All other missing fields (name, father, DOB, etc.) are NOT critical failures
+        # They should be captured as warnings/missing_fields but not block approval
+        # The risk agent and other downstream agents will decide based on risk profile
+        
         if missing_fields:
-            logger.error(f"🛑 DOCUMENT REJECTED - Missing mandatory fields: {missing_fields}")
-            verified = False
-            mandatory_fields_valid = False
+            logger.warning(f"⚠️ Missing fields detected: {missing_fields}")
+            # Don't set verified=False just for missing fields
+            # Only the extract agent's is_valid_kyc and critical failures matter
+            mandatory_fields_valid = (len(critical_failures) == 0)
         else:
             mandatory_fields_valid = True
         
@@ -159,19 +190,30 @@ async def verify(data: Dict[str, Any]):
         confidence_score = max(verification_confidence, extract_confidence)
         logger.info(f"Final confidence_score (max of both): {confidence_score:.2%}")
         
-        # CRITICAL: Mandatory fields OVERRIDE confidence
-        # Even high confidence cannot override missing mandatory fields (photo, name, etc.)
-        if not mandatory_fields_valid:
+        # VERIFICATION LOGIC (simplified and more practical):
+        # **Trust the extract agent's is_valid_kyc status**
+        # Extract agent has done OCR and document type validation already
+        
+        # ONLY reject if:
+        # 1. Critical failure detected (fraud, watermark, missing photo)
+        # 2. Extract agent explicitly rejected (is_valid_kyc=False)
+        
+        if critical_failures and len(critical_failures) > 0:
+            # CRITICAL failure - reject
             verified = False
-            logger.error("🛑 MANDATORY FIELD REQUIREMENT FAILED - Rejecting regardless of confidence")
-        # CRITICAL: If confidence is high (>=80%) AND mandatory fields present, treat as verified
-        # This allows high-confidence extractions to proceed even if document is borderline
-        elif confidence_score >= 0.8:
+            logger.error(f"🛑 Critical failures detected: {critical_failures}")
+        elif not data.get("is_valid_kyc", False):
+            # Extract agent rejected this document
+            verified = False
+            logger.warning(f"Extract agent rejected document: {data.get('reason', 'Unknown')}")
+        elif confidence_score >= 0.75:
+            # Decent confidence and no critical issues - APPROVE
             verified = True
-            logger.info(f"✓ HIGH CONFIDENCE ({confidence_score:.2%}) with valid mandatory fields - Overriding verification status to TRUE")
+            logger.info(f"✓ Document verification PASSED (confidence: {confidence_score:.2%}, no critical failures)")
         else:
-            verified = base_verified
-            logger.info(f"Using base verification status: {verified}")
+            # Low confidence but no critical issues - require manual review
+            verified = False
+            logger.warning(f"Low confidence ({confidence_score:.2%}) - setting verified=False for manual review")
 
         result = {
             "status": "success",
@@ -180,6 +222,7 @@ async def verify(data: Dict[str, Any]):
             "validations": validations,
             "cross_verifications": cross_verifications,
             "original_data": data,
+            "critical_failures": critical_failures,  # NEW: Pass critical failures to decision agent
             "timestamp": datetime.now().isoformat()
         }
 

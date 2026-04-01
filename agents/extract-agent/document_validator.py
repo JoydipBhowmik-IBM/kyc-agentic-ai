@@ -88,74 +88,82 @@ class DocumentValidator:
     def _detect_fraud_indicators(self, text: str) -> Dict:
         """
         Detect fraud indicators in document
-        For testing: SAMPLE documents with valid PAN structure are allowed
-        Real frauds (fake watermarks, templates, photocopies) are rejected
+        STRICTLY rejects:
+        1. Documents with watermarks (SAMPLE, IMMIHELP, logos, external text overlays)
+        2. Photocopied or tampered documents
+        3. Template/demo documents
         """
         text_lower = text.lower()
         fraud_indicators = []
         is_fraudulent = False
         
-        # Check for CRITICAL fraud indicators
-        critical_fraud_keywords = [
-            ('photocopied', 'Photocopied document (not certified)'),
-            ('photocopy', 'Photocopy (not original)'),
-            ('copy', 'Copy of original (not certified)'),
-            ('not real', 'Not real indicator'),
-            ('fake', 'Explicitly marked as fake'),
-            ('dummy text', 'Dummy/placeholder text'),
+        # CRITICAL FRAUD INDICATORS - ALWAYS REJECT
+        # 1. Watermark/Overlay detection
+        watermark_keywords = [
+            ('sample', 'Watermarked as SAMPLE'),
+            ('immihelp', 'IMMIHELP.COM watermark - External website overlay'),
+            ('sample - immihelp', 'SAMPLE document from IMMIHELP'),
+            ('watermark', 'Document contains watermark'),
+            ('© copyright', 'Copyright/watermark overlay'),
+            ('for demonstration', 'For demonstration only'),
+            ('not for legal', 'Not for legal use'),
+            ('dummy', 'Dummy/placeholder document'),
             ('template', 'Template document'),
         ]
         
-        for keyword, description in critical_fraud_keywords:
+        # 2. Photocopied/Tampered documents
+        photocopied_keywords = [
+            ('photocopied', 'Photocopied document'),
+            ('photocopy', 'Photocopy (not original)'),
+            ('copy', 'Copy of original'),
+            ('not original', 'Not original document'),
+            ('duplicate', 'Duplicate/copy'),
+            ('certified copy', 'Certified copy (indicates original is elsewhere)'),
+        ]
+        
+        # 3. Fake/invalid documents
+        fake_keywords = [
+            ('fake', 'Explicitly marked as fake'),
+            ('not real', 'Marked as not real'),
+            ('invalid', 'Invalid document'),
+            ('cancelled', 'Cancelled document'),
+            ('expired', 'Expired document'),  # For ID documents
+        ]
+        
+        # Check all critical indicators
+        for keyword, description in watermark_keywords + photocopied_keywords + fake_keywords:
             if keyword in text_lower:
                 fraud_indicators.append(description)
                 is_fraudulent = True
         
-        # Suspicious patterns (priority 2)
-        if not is_fraudulent:
-            suspicious_patterns = [
-                (r'for\s+demonstration\s+only', 'For demonstration only'),
-                (r'not\s+for\s+legal\s+use', 'Not for legal use'),
-            ]
-            
-            for pattern, description in suspicious_patterns:
-                if re.search(pattern, text_lower):
+        # Additional fraud patterns
+        fraud_patterns = [
+            (r'sample\s*[-]?\s*immihelp|immihelp\.com', 'Website watermark overlay detected'),
+            (r'for\s+demonstration\s+only', 'Demonstration document'),
+            (r'not\s+for\s+legal\s+use', 'Not for legal use'),
+            (r'test\s+(document|image)', 'Test/sample document'),
+        ]
+        
+        for pattern, description in fraud_patterns:
+            if re.search(pattern, text_lower):
+                if description not in fraud_indicators:
                     fraud_indicators.append(description)
+                    is_fraudulent = True
         
-        # Note: SAMPLE documents with valid structure are ALLOWED for testing
-        # This enables testing with sample documents like IMMIHELP samples
-        has_sample_watermark = 'sample' in text_lower or 'immihelp' in text_lower
-        has_valid_pan = bool(re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text))
-        
-        # Generic name detection: Any capitalized word(s) (2+ letters)
-        has_name = bool(re.search(r'\b[A-Z][a-z]{1,}\s+[A-Z][a-z]{1,}\b', text))
-        has_dob = bool(re.search(r'\d{1,2}/\d{1,2}/\d{4}', text))
-        
-        # SAMPLE documents are ALLOWED if they have valid PAN structure
-        if has_sample_watermark and (has_valid_pan and has_name and has_dob):
-            # This is a valid sample document - ALLOW for testing
-            return {
-                "is_fraudulent": False,
-                "fraud_reason": "",
-                "indicators": [],
-                "is_sample": True,
-                "note": "Sample document with valid structure - ALLOWED for testing"
-            }
-        
-        fraud_reason = " + ".join(fraud_indicators[:2]) if fraud_indicators else ""
+        fraud_reason = " | ".join(fraud_indicators[:3]) if fraud_indicators else ""
         
         return {
             "is_fraudulent": is_fraudulent,
             "fraud_reason": fraud_reason,
             "indicators": fraud_indicators,
-            "is_sample": has_sample_watermark,
-            "note": None
+            "is_sample": 'sample' in text_lower or 'immihelp' in text_lower,
+            "note": "REJECTED: Document contains watermarks or is not original" if is_fraudulent else None
         }
 
     def validate_and_classify(self, text: str) -> Dict:
         """
         Validate if document is a KYC document and classify its type
-        STRICT MODE: Only PAN cards with complete structure are approved
+        Supports multiple KYC document types with appropriate validation
         
         Args:
             text: Extracted text from document
@@ -172,26 +180,92 @@ class DocumentValidator:
                 "details": []
             }
         
-        # STRICT: Only approve PAN cards with ALL required fields
-        pan_validation = self._validate_pan_strict(text)
+        # Check each document type
+        scores = {}
+        details = {}
         
-        if pan_validation["is_valid"]:
-            return {
-                "is_valid_kyc": True,
-                "document_type": KYCDocumentType.PAN.value,
-                "confidence": pan_validation["confidence"],
-                "reason": "Valid PAN document with complete structure",
-                "details": pan_validation["details"],
-                "approval_reason": "PAN card with all mandatory fields"
-            }
-        else:
+        scores[KYCDocumentType.AADHAR] = self._check_aadhar(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.PAN] = self._check_pan(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.PASSPORT] = self._check_passport(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.DRIVING_LICENSE] = self._check_driving_license(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.VOTER_ID] = self._check_voter_id(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.BANK_STATEMENT] = self._check_bank_statement(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        scores[KYCDocumentType.UTILITY_BILL] = self._check_utility_bill(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        
+        # Find best match
+        best_type = max(scores, key=scores.get)
+        best_score = scores[best_type]
+        
+        # Special logic: If Income Tax Department is found, ALWAYS prioritize PAN
+        text_normalized = re.sub(r'\s+', ' ', text.lower())
+        income_tax_keywords = ['income tax', 'income-tax', 'incometax']
+        dept_keywords = ['department', 'dept', 'govt of india', 'government of india']
+        
+        has_income_tax = any(keyword in text_normalized for keyword in income_tax_keywords)
+        has_dept = any(keyword in text_normalized for keyword in dept_keywords)
+        
+        if has_income_tax and has_dept:
+            # Income Tax Department header is present - definitely a PAN
+            best_type = KYCDocumentType.PAN
+            best_score = max(scores[KYCDocumentType.PAN], 0.95)  # Very high confidence
+        elif has_income_tax and scores[KYCDocumentType.PAN] > 0.25:
+            # Income Tax keyword present with reasonable PAN score
+            best_type = KYCDocumentType.PAN
+            best_score = max(scores[KYCDocumentType.PAN], 0.85)
+        elif re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text) and scores[KYCDocumentType.PAN] > 0.3:
+            # PAN format detected with reasonable score
+            best_type = KYCDocumentType.PAN
+            best_score = max(scores[KYCDocumentType.PAN], 0.80)
+        
+        # Determine if valid KYC document
+        kyc_document_types = [
+            KYCDocumentType.AADHAR,
+            KYCDocumentType.PAN,
+            KYCDocumentType.PASSPORT,
+            KYCDocumentType.DRIVING_LICENSE,
+            KYCDocumentType.VOTER_ID,
+            KYCDocumentType.BANK_STATEMENT,
+            KYCDocumentType.UTILITY_BILL,
+        ]
+        
+        # CRITICAL: Check for fraud indicators FIRST
+        # If document is fraudulent (watermarked, fake, etc), REJECT immediately
+        fraud_check = self._detect_fraud_indicators(text)
+        if fraud_check['is_fraudulent']:
+            # Document is fraudulent - REJECT regardless of document type or score
             return {
                 "is_valid_kyc": False,
-                "document_type": KYCDocumentType.INVALID.value,
-                "confidence": 0.0,
-                "reason": f"Document does not match required PAN structure: {pan_validation['failure_reason']}",
-                "details": []
+                "document_type": best_type.value,
+                "confidence": round(best_score, 2),
+                "reason": f"DOCUMENT REJECTED: {fraud_check['fraud_reason']} - Fraudulent or non-original document",
+                "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
+                "extracted_patterns": self._extract_key_patterns(text, best_type),
+                "fraud_detected": True,
+                "fraud_indicators": fraud_check['indicators']
             }
+        
+        # Special handling for PAN documents - they're primary KYC documents
+        # Use lower threshold (0.20) for PAN since it's a critical document
+        if best_type == KYCDocumentType.PAN:
+            is_valid = best_score > 0.20
+        else:
+            is_valid = best_type in kyc_document_types and best_score > 0.3
+        
+        # If score is very low, mark as Unknown instead of a specific type
+        if best_score < 0.1:
+            best_type = KYCDocumentType.UNKNOWN
+        
+        result = {
+            "is_valid_kyc": is_valid,
+            "document_type": best_type.value,
+            "confidence": round(best_score, 2),
+            "reason": self._get_reason(best_type, best_score, is_valid),
+            "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
+            "extracted_patterns": self._extract_key_patterns(text, best_type),
+            "fraud_detected": False
+        }
+        
+        return result
     
     def _validate_pan_strict(self, text: str) -> Dict:
         """
@@ -274,76 +348,6 @@ class DocumentValidator:
             "details": list(required_elements.keys()),
             "failure_reason": " | ".join(failures) if failures else ""
         }
-        
-        # Check each document type
-        scores = {}
-        details = {}
-        
-        scores[KYCDocumentType.AADHAR] = self._check_aadhar(text, text_lower, text_normalized)
-        scores[KYCDocumentType.PAN] = self._check_pan(text, text_lower, text_normalized)
-        scores[KYCDocumentType.PASSPORT] = self._check_passport(text, text_lower, text_normalized)
-        scores[KYCDocumentType.DRIVING_LICENSE] = self._check_driving_license(text, text_lower, text_normalized)
-        scores[KYCDocumentType.VOTER_ID] = self._check_voter_id(text, text_lower, text_normalized)
-        scores[KYCDocumentType.BANK_STATEMENT] = self._check_bank_statement(text, text_lower, text_normalized)
-        scores[KYCDocumentType.UTILITY_BILL] = self._check_utility_bill(text, text_lower, text_normalized)
-        
-        # Find best match
-        best_type = max(scores, key=scores.get)
-        best_score = scores[best_type]
-        
-        # Special logic: If Income Tax Department is found, ALWAYS prioritize PAN
-        # Support OCR variations (use normalized text for better detection)
-        income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
-        dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
-        
-        has_income_tax = any(keyword in text_normalized for keyword in income_tax_keywords)
-        has_dept = any(keyword in text_normalized for keyword in dept_keywords)
-        
-        if has_income_tax and has_dept:
-            # Income Tax Department header is present - definitely a PAN
-            best_type = KYCDocumentType.PAN
-            best_score = max(scores[KYCDocumentType.PAN], 0.95)  # Very high confidence
-        elif has_income_tax and scores[KYCDocumentType.PAN] > 0.25:
-            # Income Tax keyword present with reasonable PAN score
-            best_type = KYCDocumentType.PAN
-            best_score = max(scores[KYCDocumentType.PAN], 0.85)
-        elif re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text) and scores[KYCDocumentType.PAN] > 0.3:
-            # PAN format detected with reasonable score
-            best_type = KYCDocumentType.PAN
-            best_score = max(scores[KYCDocumentType.PAN], 0.80)
-        
-        # Determine if valid KYC document
-        kyc_document_types = [
-            KYCDocumentType.AADHAR,
-            KYCDocumentType.PAN,
-            KYCDocumentType.PASSPORT,
-            KYCDocumentType.DRIVING_LICENSE,
-            KYCDocumentType.VOTER_ID,
-            KYCDocumentType.BANK_STATEMENT,
-            KYCDocumentType.UTILITY_BILL,
-        ]
-        
-        # Special handling for PAN documents - they're primary KYC documents
-        # Use lower threshold (0.20) for PAN since it's a critical document
-        if best_type == KYCDocumentType.PAN:
-            is_valid = best_score > 0.20
-        else:
-            is_valid = best_type in kyc_document_types and best_score > 0.3
-        
-        # If score is very low, mark as Unknown instead of a specific type
-        if best_score < 0.1:
-            best_type = KYCDocumentType.UNKNOWN
-        
-        result = {
-            "is_valid_kyc": is_valid,
-            "document_type": best_type.value,
-            "confidence": round(best_score, 2),
-            "reason": self._get_reason(best_type, best_score, is_valid),
-            "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
-            "extracted_patterns": self._extract_key_patterns(text, best_type)
-        }
-        
-        return result
     
     def _check_aadhar(self, text: str, text_lower: str, text_normalized: str) -> float:
         """Check for Aadhar document characteristics"""
@@ -414,6 +418,12 @@ class DocumentValidator:
         # Additional PAN indicators from the actual card layout
         if any(keyword in text_lower for keyword in ['govt', 'sarkaar', 'भारत', 'government']):
             score += 0.1
+        
+        # CRITICAL: REJECT if fraud/watermarks detected
+        fraud_check = self._detect_fraud_indicators(text)
+        if fraud_check['is_fraudulent']:
+            # Watermarked, tampered, or non-original documents are REJECTED
+            return 0.0
         
         # Strong reject if obviously not PAN (but allow combined documents)
         if any(keyword in text_lower for keyword in ['valid upto', 'vehicle class', 'driving license', 'election commission', 'voter id']):
