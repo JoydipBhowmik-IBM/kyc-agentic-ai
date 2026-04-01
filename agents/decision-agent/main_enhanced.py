@@ -194,10 +194,20 @@ class DecisionEngine:
         Make final KYC decision based on comprehensive analysis
         """
         
-        # Primary check: Verification status
+        # Get confidence score for refined decision making
+        confidence_score = data.get("confidence_score", 0.0)
+        
+        # Primary check: Verification status WITH confidence override
+        # If confidence is high (>=0.8), allow conditional approval even if verification failed on minor check
         if not verified:
-            rule = self.DECISION_RULES["verification_failed"]
-            return self.format_decision(rule, risk_score)
+            if confidence_score >= 0.8:
+                logger.info(f"Verification failed but confidence is high ({confidence_score:.2%}), allowing conditional review")
+                rule = self.DECISION_RULES["low_medium_risk"]  # CONDITIONAL_APPROVAL for high confidence
+                return self.format_decision(rule, risk_score)
+            else:
+                logger.warning(f"Verification failed and confidence is low ({confidence_score:.2%}), rejecting")
+                rule = self.DECISION_RULES["verification_failed"]
+                return self.format_decision(rule, risk_score)
         
         # Map risk level to decision rule
         rule_key = risk_level.lower() if risk_level else "medium_risk"
