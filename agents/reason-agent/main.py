@@ -8,13 +8,22 @@ import requests
 import logging
 import os
 import json
+import sys
 from datetime import datetime
 from typing import Dict, Any, List
 import numpy as np
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to output to stdout/stderr
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('/tmp/reason-agent.log')
+    ]
+)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # LangChain imports
 try:
@@ -60,8 +69,10 @@ if LANGCHAIN_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════
 
 # Enhanced analysis prompt that includes retrieved context
-rag_analysis_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a senior KYC compliance expert with expertise in:
+rag_analysis_prompt = None
+if LANGCHAIN_AVAILABLE:
+    rag_analysis_prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a senior KYC compliance expert with expertise in:
 - Identity verification and fraud detection
 - Regulatory compliance (AML/KYC requirements)
 - Risk assessment and mitigation
@@ -73,7 +84,7 @@ You have access to:
 - Historical Analysis: Previous analysis results for similar documents
 
 Use all available context to provide comprehensive, evidence-based analysis."""),
-    ("human", """Analyze this KYC document with the following context:
+        ("human", """Analyze this KYC document with the following context:
 
 ═════════════════════════════════════════════════════════════
 DOCUMENT INFORMATION
@@ -111,7 +122,7 @@ Provide comprehensive analysis in JSON format:
     "recommendation": "Next recommended action",
     "reasoning": "Detailed reasoning for the assessment"
 }}""")
-])
+    ])
 
 # ═══════════════════════════════════════════════════════════════
 # MCP CLIENT FUNCTIONS
