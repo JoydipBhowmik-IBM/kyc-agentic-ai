@@ -1,12 +1,22 @@
 from fastapi import FastAPI, HTTPException
 import logging
+import sys
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
 import numpy as np
 from scipy.stats import zscore  # For anomaly detection
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging to output to stdout/stderr
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('/tmp/risk-agent.log')
+    ]
+)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 app = FastAPI(title="Risk Agent with Advanced Intelligence", version="2.0.0")
 

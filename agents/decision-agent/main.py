@@ -1,13 +1,22 @@
 from fastapi import FastAPI, HTTPException
 import logging
+import sys
 from datetime import datetime
 from typing import Dict, Any, List
 import json
 import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to output to stdout/stderr
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('/tmp/decision-agent.log')
+    ]
+)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # LangChain imports for decision-making (optional, for future enhancement)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
