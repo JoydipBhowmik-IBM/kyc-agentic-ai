@@ -6,6 +6,7 @@ Identifies KYC document types and validates if documents are valid KYC documents
 import re
 from typing import Dict
 from enum import Enum
+from datetime import datetime
 
 class KYCDocumentType(Enum):
     """Supported KYC document types in India"""
@@ -377,11 +378,15 @@ class DocumentValidator:
         return min(score, 1.0)
     
     def _check_pan(self, text: str, text_lower: str, text_normalized: str) -> float:
-        """Check for PAN document characteristics"""
+        """Check for PAN document characteristics with strict validation"""
         score = 0.0
         
-        # CRITICAL: Check for Income Tax Department header - STRONGEST indicator
-        # Support variations due to OCR (use text_normalized to handle newlines and extra spaces)
+        # CRITICAL: Check for Government of India tag
+        has_govt_india = self._check_government_of_india_tag(text_lower, text_normalized)
+        if not has_govt_india:
+            return 0.0  # REJECT if no Government of India tag
+        
+        # Check for Income Tax Department header - STRONGEST indicator
         income_tax_keywords = ['income tax', 'income-tax', 'incometax', 'incometax']
         dept_keywords = ['department', 'dept', 'govt of india', 'government of india', 'govt of india']
         
@@ -394,16 +399,21 @@ class DocumentValidator:
         elif has_income_tax:
             score += 0.65  # Strong indicator even without explicit "department"
         
-        # Check for PAN format XXXXX0000X - VERY HIGH WEIGHT
-        # Also support formats with spaces or special chars that OCR might introduce
-        pan_formats = [
-            re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text),  # Standard format
-            re.search(r'[A-Z]{5}\s*[0-9]{4}\s*[A-Z]{1}', text),  # With spaces
-            re.search(r'[A-Z]{5}[^A-Z0-9]*[0-9]{4}[^A-Z0-9]*[A-Z]{1}', text),  # With any separators
-        ]
+        # CRITICAL: Check for valid PAN format XXXXX0000X - VERY HIGH WEIGHT
+        pan_check = self._validate_pan_account_number(text)
+        if pan_check['is_valid']:
+            score += 0.75  # Increased weight for valid PAN format
+        else:
+            # If PAN format is invalid, significantly reduce score
+            score *= 0.5
         
-        if any(pan_formats):
-            score += 0.75  # Increased weight for PAN format
+        # CRITICAL: Check for Date of Birth
+        dob_check = self._validate_dob_in_pan(text)
+        if dob_check['is_valid']:
+            score += 0.65  # High weight for valid DOB
+        else:
+            # If DOB is missing or invalid, significantly reduce score
+            score *= 0.5
         
         # Check for explicit PAN keywords - HIGH WEIGHT
         explicit_pan_keywords = ['pan card', 'pan number', 'pan:', 'permanent account number', 'p.a.n', 'permanent account']
@@ -430,6 +440,149 @@ class DocumentValidator:
             score *= 0.5  # Reduced penalty - could be combined doc
         
         return min(score, 1.0)
+    
+    def _check_government_of_india_tag(self, text_lower: str, text_normalized: str) -> bool:
+        """Check for Government of India tag in PAN card - CRITICAL validation"""
+        govt_india_patterns = [
+            'government of india',
+            'govt of india',
+            'govt. of india',
+            'भारत सरकार',  # Government of India in Hindi
+        ]
+        
+        # Check both normalized and original lowercase versions
+        for pattern in govt_india_patterns:
+            if pattern in text_normalized or pattern in text_lower:
+                return True
+        
+        # Also check for Income Tax Department which is part of Government of India
+        if 'income tax' in text_normalized or 'income tax' in text_lower:
+            return True
+        
+        return False
+    
+    def _validate_pan_account_number(self, text: str) -> Dict:
+        """Validate PAN account number format: XXXXX0000X"""
+        # Search for PAN format patterns
+        pan_patterns = [
+            r'[A-Z]{5}[0-9]{4}[A-Z]{1}',  # Standard format
+            r'[A-Z]{5}\s+[0-9]{4}\s+[A-Z]{1}',  # With spaces
+            r'[A-Z]{5}[^A-Z0-9]*[0-9]{4}[^A-Z0-9]*[A-Z]{1}',  # With any separators
+        ]
+        
+        pan_number = None
+        for pattern in pan_patterns:
+            matches = re.findall(pattern, text)
+            if matches:
+                # Clean up the PAN number (remove spaces and extra chars)
+                pan_number = re.sub(r'[^A-Z0-9]', '', matches[0])
+                break
+        
+        if not pan_number:
+            return {
+                "is_valid": False,
+                "pan_number": "",
+                "reason": "PAN number not found. Expected format: XXXXX0000X (5 letters + 4 digits + 1 letter)"
+            }
+        
+        # Validate the format is exactly correct
+        if not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', pan_number):
+            return {
+                "is_valid": False,
+                "pan_number": pan_number,
+                "reason": f"Invalid PAN format: {pan_number}. Expected: XXXXX0000X"
+            }
+        
+        return {
+            "is_valid": True,
+            "pan_number": pan_number,
+            "reason": "Valid PAN account number format"
+        }
+    
+    def _validate_dob_in_pan(self, text: str) -> Dict:
+        """Validate Date of Birth in PAN card"""
+        # Common DOB patterns
+        dob_patterns = [
+            r'(?:dob|date\s+of\s+birth)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+            r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',  # Just date in DD/MM/YYYY or DD-MM-YYYY
+        ]
+        
+        dob_found = None
+        for pattern in dob_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                dob_found = match.group(1) if '(' in pattern else match.group(0)
+                break
+        
+        if not dob_found:
+            return {
+                "is_valid": False,
+                "dob": "",
+                "reason": "Date of Birth not found in expected format (DD/MM/YYYY)"
+            }
+        
+        # Validate the date format is reasonable
+        dob_parts = re.split(r'[/-]', dob_found)
+        if len(dob_parts) != 3:
+            return {
+                "is_valid": False,
+                "dob": dob_found,
+                "reason": f"Invalid DOB format: {dob_found}. Expected DD/MM/YYYY"
+            }
+        
+        try:
+            day, month, year = int(dob_parts[0]), int(dob_parts[1]), int(dob_parts[2])
+            
+            # Validate day
+            if day < 1 or day > 31:
+                return {
+                    "is_valid": False,
+                    "dob": dob_found,
+                    "reason": f"Invalid day: {day}. Day must be between 1 and 31"
+                }
+            
+            # Validate month
+            if month < 1 or month > 12:
+                return {
+                    "is_valid": False,
+                    "dob": dob_found,
+                    "reason": f"Invalid month: {month}. Month must be between 1 and 12"
+                }
+            
+            # Validate year (should be reasonable - not in future, not too old)
+            current_year = datetime.now().year
+            if year < 100:  # 2-digit year, assume 19xx or 20xx
+                year = 1900 + year if year > 50 else 2000 + year
+            
+            if year > current_year:
+                return {
+                    "is_valid": False,
+                    "dob": dob_found,
+                    "reason": f"Invalid year: {year}. Year cannot be in the future"
+                }
+            
+            # Check if person is at least 18 years old (typical KYC requirement)
+            age = current_year - year
+            if age < 0:
+                return {
+                    "is_valid": False,
+                    "dob": dob_found,
+                    "reason": f"Invalid DOB: calculated negative age"
+                }
+            
+            return {
+                "is_valid": True,
+                "dob": f"{day:02d}/{month:02d}/{year}",
+                "reason": f"Valid DOB found: {day:02d}/{month:02d}/{year}",
+                "age": age
+            }
+        
+        except (ValueError, IndexError) as e:
+            return {
+                "is_valid": False,
+                "dob": dob_found,
+                "reason": f"Error parsing DOB: {dob_found}"
+            }
     
     def _check_passport(self, text: str, text_lower: str, text_normalized: str) -> float:
         """Check for Passport document characteristics"""
