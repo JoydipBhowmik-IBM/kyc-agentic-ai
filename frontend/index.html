@@ -652,6 +652,7 @@
                 <label for="file" class="file-input-label">Choose File</label>
                 <input type="file" id="file" accept="image/*,.pdf" />
                 <div class="file-name" id="fileName"></div>
+                <img id="imagePreview" src="" alt="Selected document preview" style="max-width:180px; margin-top: 12px; display:none; border:1px solid #ddd; border-radius:4px;margin-left: 120px;" />
             </div>
 
             <button id="submitBtn" onclick="upload()" disabled>Submit for Processing</button>
@@ -772,12 +773,29 @@
 
     function updateFileName() {
         const file = fileInput.files[0];
+        const imagePreview = document.getElementById('imagePreview');
+
         if (file) {
             fileNameDisplay.textContent = `Selected: ${file.name}`;
             submitBtn.disabled = false;
+
+            // show image preview only for image files
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.src = '';
+                imagePreview.style.display = 'none';
+            }
         } else {
             fileNameDisplay.textContent = '';
             submitBtn.disabled = true;
+            imagePreview.src = '';
+            imagePreview.style.display = 'none';
         }
     }
 
