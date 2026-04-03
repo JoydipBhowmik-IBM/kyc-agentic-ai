@@ -42,6 +42,10 @@ services:
       - "${VERIFY_AGENT_PORT:-8008}:8000"
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      VECTOR_DB_PATH: /data/kyc_vector_db
+    volumes:
+      - kyc-vector-db:/data/kyc_vector_db
+      - ./kyc_vector_db:/app/kyc_vector_db
     logging:
       driver: "json-file"
       options:
@@ -106,7 +110,9 @@ services:
       python -m pip install --quiet chromadb pydantic 2>/dev/null &&
       echo '[2/3] Initializing vector DB...' &&
       python /app/init_vector_db_simple.py &&
-      echo '[3/3] Vector DB ready' &&
+      echo '[3/3] Syncing vector DB to volume...' &&
+      cp -r /app/kyc_vector_db/* /data/kyc_vector_db/ 2>/dev/null || true &&
+      echo '[4/3] Vector DB ready' &&
       echo 'Initialization complete. Container will now sleep.' &&
       sleep infinity
       "
