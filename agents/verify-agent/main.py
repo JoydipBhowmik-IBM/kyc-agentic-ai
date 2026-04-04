@@ -124,6 +124,7 @@ def _extract_regex_from_rule(requirement: str, document_type: str) -> str | None
 def apply_kyc_rules(data: Dict[str, Any]) -> Dict[str, Any]:
     """Apply rule-driven validation based on loaded kyc_rules.json."""
     if not KYC_RULES:
+        logger.warning("⚠️ No KYC rules loaded from knowledge base!")
         return {"valid": True, "reason": "No KYC rules loaded"}
 
     document_type = (data.get("document_type") or "").strip().lower()
@@ -131,23 +132,38 @@ def apply_kyc_rules(data: Dict[str, Any]) -> Dict[str, Any]:
 
     # If no text is available (e.g., image just uploaded but OCR not yet run), skip strict rule validation.
     if not text:
+        logger.info("📋 No text available yet; skipping KYC rule validation")
         return {"valid": True, "reason": "Text not available yet; skipping KYC rule text validation"}
 
     if not document_type:
+        logger.error("❌ Missing document_type; cannot apply KYC rules")
         return {"valid": False, "reason": "Missing document_type; cannot apply KYC rules"}
 
     rules_for_type = [rule for rule in KYC_RULES
                       if rule.get("document_type", "").strip().lower() == document_type]
 
     if not rules_for_type:
-        # Allow pass through if no rules are defined for this document type
+        logger.warning(f"⚠️ No KYC rules defined for document type '{document_type}'")
         return {"valid": True, "reason": f"No KYC rules defined for document type '{document_type}'"}
 
+    # Log rule validation start
+    logger.info("="*70)
+    logger.info(f"🔍 RULE VALIDATION STARTED - Document: {document_type.upper()}")
+    logger.info(f"Total rules to check: {len(rules_for_type)}")
+    logger.info("="*70)
+
+    passed_rules = []
+    failed_rules = []
+    
     # Apply each rule, reject if any critical rule fails
     for rule in rules_for_type:
         rule_id = rule.get("rule_id", "unknown")
+        rule_title = rule.get("title", "Unknown Rule")
         requirement = rule.get("requirement", "")
         priority = (rule.get("priority", "") or "LOW").upper()
+
+        logger.info(f"\n📌 Rule: {rule_id} | Title: {rule_title} | Priority: {priority}")
+        logger.info(f"   Requirement: {requirement}")
 
         # allow explicit regex in JSON rule if provided
         if rule.get("regex"):
@@ -156,36 +172,61 @@ def apply_kyc_rules(data: Dict[str, Any]) -> Dict[str, Any]:
             regex = _extract_regex_from_rule(requirement, document_type)
 
         if not regex:
-            logger.warning(f"No regex available for rule {rule_id}; skipping this rule")
+            logger.warning(f"   ⚠️ No regex available for rule {rule_id}; skipping")
             continue
 
         try:
             pattern = re.compile(regex)
         except re.error as ex:
-            logger.warning(f"Invalid regex in rule {rule_id} ('{regex}'): {ex}; skipping")
+            logger.warning(f"   ⚠️ Invalid regex in rule {rule_id} ('{regex}'): {ex}; skipping")
             continue
 
         if pattern.search(text):
-            logger.info(f"Rule {rule_id} matched for {document_type}")
+            logger.info(f"   ✅ PASSED - Rule matched successfully")
+            passed_rules.append(rule_id)
             continue
 
-        reason = f"{rule_id} failed: text does not meet requirement '{requirement}'"
-        logger.warning(reason)
+        # Rule failed
+        failed_reason = f"Text does not meet requirement: '{requirement}'"
+        logger.warning(f"   ❌ FAILED - {failed_reason}")
+        failed_rules.append({
+            "rule_id": rule_id,
+            "title": rule_title,
+            "requirement": requirement,
+            "priority": priority
+        })
+        
         if priority == "CRITICAL":
-            return {"valid": False, "reason": reason}
+            logger.error(f"\n🚫 CRITICAL RULE FAILED! Rejecting document.")
+            logger.info("="*70)
+            return {"valid": False, "reason": f"CRITICAL rule {rule_id} failed: {failed_reason}"}
         # non-critical rules may be skipped
 
-    return {"valid": True, "reason": f"All applicable KYC rules passed for {document_type}"}
+    logger.info("\n" + "="*70)
+    logger.info(f"✅ RULE VALIDATION SUMMARY")
+    logger.info(f"   Passed Rules: {len(passed_rules)} - {passed_rules}")
+    logger.info(f"   Failed Rules: {len(failed_rules)}")
+    if failed_rules:
+        for failed in failed_rules:
+            logger.info(f"      - {failed['rule_id']} ({failed['priority']}): {failed['requirement']}")
+    logger.info("="*70 + "\n")
+
+    return {"valid": True, "reason": f"All applicable KYC rules passed for {document_type}", "passed_rules": passed_rules, "failed_rules": failed_rules}
 
 
 def check_fraud_patterns(data: Dict[str, Any]) -> Dict[str, Any]:
     """Check for fraud patterns indicators in document data and extracted text."""
     if not FRAUD_PATTERNS:
+        logger.warning("⚠️ No fraud patterns loaded from knowledge base!")
         return {"fraud_detected": False, "patterns_matched": [], "reason": "No fraud patterns loaded"}
 
     text_lower = (data.get("text") or "").lower()
     detected_patterns = []
     risk_level = "LOW"
+
+    logger.info("="*70)
+    logger.info(f"🚨 FRAUD PATTERN CHECK - Total patterns to verify: {len(FRAUD_PATTERNS)}")
+    logger.info("="*70)
 
     # Check each fraud pattern for indicators
     for pattern in FRAUD_PATTERNS:
@@ -194,6 +235,9 @@ def check_fraud_patterns(data: Dict[str, Any]) -> Dict[str, Any]:
         indicators = pattern.get("indicators", [])
         pattern_risk = pattern.get("risk_level", "MEDIUM").upper()
 
+        logger.info(f"\n🔎 Pattern: {pattern_id} | {pattern_name} | Risk: {pattern_risk}")
+        logger.info(f"   Checking indicators: {indicators}")
+
         # Check if any indicators are found in the text
         matched_indicators = []
         for indicator in indicators:
@@ -201,6 +245,7 @@ def check_fraud_patterns(data: Dict[str, Any]) -> Dict[str, Any]:
                 matched_indicators.append(indicator)
 
         if matched_indicators:
+            logger.warning(f"   ⚠️ DETECTED - Matched indicators: {matched_indicators}")
             detected_patterns.append({
                 "pattern_id": pattern_id,
                 "pattern_name": pattern_name,
@@ -213,8 +258,20 @@ def check_fraud_patterns(data: Dict[str, Any]) -> Dict[str, Any]:
                 risk_level = "CRITICAL"
             elif pattern_risk == "HIGH" and risk_level != "CRITICAL":
                 risk_level = "HIGH"
+        else:
+            logger.info(f"   ✅ OK - No indicators detected")
 
     fraud_detected = len(detected_patterns) > 0
+    
+    logger.info("\n" + "="*70)
+    if fraud_detected:
+        logger.warning(f"🚨 FRAUD CHECK RESULT: {len(detected_patterns)} pattern(s) detected!")
+        logger.warning(f"   Overall Risk Level: {risk_level}")
+        for detected in detected_patterns:
+            logger.warning(f"   - {detected['pattern_id']}: {detected['pattern_name']}")
+    else:
+        logger.info(f"✅ FRAUD CHECK RESULT: No fraud patterns detected")
+    logger.info("="*70 + "\n")
     
     return {
         "fraud_detected": fraud_detected,

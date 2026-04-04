@@ -1,14 +1,20 @@
 {
-  "version": "1.0",
-  "created_at": "2026-03-28",
+  "version": "2.0",
+  "edition": "PAN-ONLY",
+  "created_at": "2026-04-04",
+  "document_types_supported": [
+    "PAN"
+  ],
   "collections": {
     "kyc_rules": {
-      "count": 10,
-      "file": "kyc_rules.json"
+      "count": 7,
+      "file": "kyc_rules.json",
+      "description": "PAN-only KYC validation rules"
     },
     "fraud_patterns": {
       "count": 10,
-      "file": "fraud_patterns.json"
+      "file": "fraud_patterns.json",
+      "description": "PAN-specific fraud detection patterns"
     }
   }
 }

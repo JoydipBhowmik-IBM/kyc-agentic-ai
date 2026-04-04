@@ -201,11 +201,14 @@ def format_context(results: List[Dict[str, Any]]) -> str:
 async def retrieve_rag_context(document_type: str, document_text: str) -> Dict[str, str]:
     """
     Retrieve relevant context from Vector DB using MCP tools
-    Implements RAG (Retrieval Augmented Generation)
+    Implements RAG (Retrieval Augmented Generation) with comprehensive verification
     """
-    logger.info("═══════════════════════════════════════════════════════")
-    logger.info("🔍 Retrieving RAG Context from Vector DB")
-    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("="*70)
+    logger.info("🔍 RETRIEVING RAG CONTEXT FROM VECTOR DB (MCP SERVER)")
+    logger.info("="*70)
+    logger.info(f"MCP Server URL: {MCP_SERVER_URL}")
+    logger.info(f"LLM Model: {LLM_MODEL}")
+    logger.info(f"Document Type: {document_type}")
 
     context = {
         "kyc_rules": "",
@@ -213,9 +216,21 @@ async def retrieve_rag_context(document_type: str, document_text: str) -> Dict[s
         "vector_db_search": ""
     }
 
+    retrieved_data = {
+        "kyc_rules_count": 0,
+        "fraud_patterns_count": 0,
+        "vector_search_count": 0,
+        "mcp_status": "checking",
+        "all_tools_successful": False
+    }
+
     try:
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # MCP Tool 1: Retrieve relevant KYC rules
-        logger.info(f"\n📋 Step 1: Retrieving KYC rules for {document_type}...")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        logger.info(f"\n📋 [Tool 1/3] Retrieving KYC rules for {document_type}...")
+        logger.info(f"   Query: 'KYC requirements for {document_type}'")
+        
         kyc_rules_result = await call_mcp_tool(
             "retrieve_kyc_rules",
             query=f"KYC requirements for {document_type}",
@@ -224,11 +239,22 @@ async def retrieve_rag_context(document_type: str, document_text: str) -> Dict[s
         )
 
         if kyc_rules_result.get("status") == "success":
+            rules_count = kyc_rules_result.get("metadata", {}).get("results_count", 0)
             context["kyc_rules"] = format_context(kyc_rules_result.get("results", []))
-            logger.info(f"  ✓ Retrieved KYC rules")
+            retrieved_data["kyc_rules_count"] = rules_count
+            logger.info(f"   ✅ SUCCESS - Retrieved {rules_count} KYC rules")
+            logger.info(f"   Context length: {len(context['kyc_rules'])} chars")
+        else:
+            error_msg = kyc_rules_result.get("metadata", {}).get("error", "Unknown error")
+            logger.error(f"   ❌ FAILED - {error_msg}")
+            logger.warning(f"   Will continue with empty KYC rules context")
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # MCP Tool 2: Retrieve fraud patterns
-        logger.info("\n🚨 Step 2: Retrieving fraud patterns...")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        logger.info(f"\n🚨 [Tool 2/3] Retrieving fraud patterns...")
+        logger.info(f"   Query: 'fraud patterns for document verification'")
+        
         fraud_patterns_result = await call_mcp_tool(
             "retrieve_fraud_patterns",
             query=f"fraud patterns for document verification",
@@ -236,11 +262,22 @@ async def retrieve_rag_context(document_type: str, document_text: str) -> Dict[s
         )
 
         if fraud_patterns_result.get("status") == "success":
+            patterns_count = fraud_patterns_result.get("metadata", {}).get("results_count", 0)
             context["fraud_patterns"] = format_context(fraud_patterns_result.get("results", []))
-            logger.info(f"  ✓ Retrieved fraud patterns")
+            retrieved_data["fraud_patterns_count"] = patterns_count
+            logger.info(f"   ✅ SUCCESS - Retrieved {patterns_count} fraud patterns")
+            logger.info(f"   Context length: {len(context['fraud_patterns'])} chars")
+        else:
+            error_msg = fraud_patterns_result.get("metadata", {}).get("error", "Unknown error")
+            logger.error(f"   ❌ FAILED - {error_msg}")
+            logger.warning(f"   Will continue with empty fraud patterns context")
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # MCP Tool 3: Generic Vector DB search based on document content
-        logger.info("\n🔎 Step 3: Vector DB search for similar documents...")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        logger.info(f"\n🔎 [Tool 3/3] Vector DB search for similar documents...")
+        logger.info(f"   Query: Document text (first 500 chars)")
+        
         vector_search_result = await call_mcp_tool(
             "retrieve_from_vector_db",
             query=document_text[:500],  # Use first 500 chars of document
@@ -248,14 +285,43 @@ async def retrieve_rag_context(document_type: str, document_text: str) -> Dict[s
         )
 
         if vector_search_result.get("status") == "success":
+            search_count = vector_search_result.get("metadata", {}).get("results_count", 0)
             context["vector_db_search"] = format_context(vector_search_result.get("results", []))
-            logger.info(f"  ✓ Retrieved similar documents from vector DB")
+            retrieved_data["vector_search_count"] = search_count
+            logger.info(f"   ✅ SUCCESS - Retrieved {search_count} similar documents")
+            logger.info(f"   Context length: {len(context['vector_db_search'])} chars")
+        else:
+            error_msg = vector_search_result.get("metadata", {}).get("error", "Unknown error")
+            logger.error(f"   ❌ FAILED - {error_msg}")
+            logger.warning(f"   Will continue with empty vector search context")
 
-        logger.info("\n✓ RAG context retrieval complete")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Summary
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        retrieved_data["all_tools_successful"] = all([
+            kyc_rules_result.get("status") == "success",
+            fraud_patterns_result.get("status") == "success",
+            vector_search_result.get("status") == "success"
+        ])
+        retrieved_data["mcp_status"] = "success" if retrieved_data["all_tools_successful"] else "partial"
+
+        logger.info("\n" + "="*70)
+        logger.info("📊 RAG CONTEXT RETRIEVAL SUMMARY")
+        logger.info("="*70)
+        logger.info(f"KYC Rules Retrieved: {retrieved_data['kyc_rules_count']} ✅" if retrieved_data['kyc_rules_count'] > 0 else f"KYC Rules Retrieved: 0 ❌")
+        logger.info(f"Fraud Patterns Retrieved: {retrieved_data['fraud_patterns_count']} ✅" if retrieved_data['fraud_patterns_count'] > 0 else f"Fraud Patterns Retrieved: 0 ❌")
+        logger.info(f"Vector Search Results: {retrieved_data['vector_search_count']} ✅" if retrieved_data['vector_search_count'] > 0 else f"Vector Search Results: 0 ❌")
+        logger.info(f"\nMCP Server Status: {retrieved_data['mcp_status'].upper()}")
+        logger.info(f"Knowledge Base Status: {'🟢 OPERATIONAL' if retrieved_data['all_tools_successful'] else '🟡 PARTIAL - Some tools failed'}")
+        logger.info("="*70 + "\n")
 
     except Exception as e:
-        logger.error(f"Error retrieving RAG context: {e}")
+        logger.error(f"❌ CRITICAL ERROR retrieving RAG context: {e}", exc_info=True)
+        retrieved_data["mcp_status"] = "error"
+        logger.warning("Will proceed with empty RAG context")
 
+    # Store retrieval stats in context for later reference
+    context["_retrieval_stats"] = retrieved_data
     return context
 
 async def perform_rag_enhanced_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -814,19 +880,77 @@ async def perform_multi_step_langchain_analysis(data: Dict[str, Any]) -> Dict[st
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
+    """Health check endpoint with MCP server and knowledge base verification"""
+    logger.info("🏥 Health check requested...")
+    
     mcp_healthy = False
+    mcp_error = None
+    kb_status = "unknown"
+    kyc_rules_available = False
+    fraud_patterns_available = False
+    
     try:
         response = requests.get(f"{MCP_SERVER_URL}/health", timeout=3)
         mcp_healthy = response.status_code == 200
-    except:
-        mcp_healthy = False
+        if mcp_healthy:
+            logger.info("✅ MCP Server is healthy")
+    except Exception as e:
+        mcp_error = str(e)
+        logger.warning(f"⚠️ MCP Server health check failed: {mcp_error}")
+
+    # Verify knowledge base status
+    if mcp_healthy:
+        try:
+            # Try to retrieve KYC rules
+            kyc_result = await call_mcp_tool(
+                "retrieve_kyc_rules",
+                query="PAN verification",
+                document_type="PAN",
+                top_k=1
+            )
+            kyc_rules_available = kyc_result.get("status") == "success" and len(kyc_result.get("results", [])) > 0
+            
+            # Try to retrieve fraud patterns
+            fraud_result = await call_mcp_tool(
+                "retrieve_fraud_patterns",
+                query="fraud detection",
+                top_k=1
+            )
+            fraud_patterns_available = fraud_result.get("status") == "success" and len(fraud_result.get("results", [])) > 0
+            
+            if kyc_rules_available and fraud_patterns_available:
+                kb_status = "operational"
+                logger.info("✅ Knowledge base is operational (KYC rules + fraud patterns available)")
+            elif kyc_rules_available or fraud_patterns_available:
+                kb_status = "partial"
+                logger.warning("⚠️ Knowledge base is partially operational")
+            else:
+                kb_status = "empty"
+                logger.warning("⚠️ Knowledge base is empty (no rules or patterns found)")
+                
+        except Exception as e:
+            kb_status = "error"
+            logger.error(f"❌ Error checking knowledge base: {e}")
 
     return {
-        "status": "healthy",
+        "status": "healthy" if mcp_healthy else "degraded",
         "service": "reason-agent-rag",
-        "version": "3.0.0",
-        "mcp_server_connected": mcp_healthy
+        "version": "3.1.0",
+        "rag_enabled": True,
+        "mcp_server": {
+            "connected": mcp_healthy,
+            "url": MCP_SERVER_URL,
+            "error": mcp_error
+        },
+        "knowledge_base": {
+            "status": kb_status,
+            "kyc_rules_available": kyc_rules_available,
+            "fraud_patterns_available": fraud_patterns_available
+        },
+        "llm": {
+            "model": LLM_MODEL,
+            "available": llm is not None
+        }
     }
 
 @app.post("/reason")
