@@ -3,6 +3,9 @@ from pydantic import BaseModel, ConfigDict
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+import os
+import json
+import re
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +23,206 @@ class VerificationRequest(BaseModel):
 async def health():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+def load_kyc_rules() -> List[Dict[str, Any]]:
+    """Load KYC rules from kyc_rules.json under kyc_vector_db"""
+    vector_db_path = os.getenv("VECTOR_DB_PATH", "/data/kyc_vector_db")
+    rules_file = os.path.join(vector_db_path, "kyc_rules.json")
+
+    if not os.path.exists(rules_file):
+        fallback_path = os.path.join("/app/kyc_vector_db", "kyc_rules.json")
+        if os.path.exists(fallback_path):
+            logger.info(f"KYC rules file found in fallback location: {fallback_path}")
+            rules_file = fallback_path
+        else:
+            logger.warning(f"KYC rules file not found: {rules_file} or {fallback_path}")
+            return []
+
+    try:
+        with open(rules_file, "r", encoding="utf-8") as f:
+            rules = json.load(f)
+            logger.info(f"✓ Loaded {len(rules)} rules from {rules_file}")
+            return rules
+    except Exception as e:
+        logger.warning(f"Error loading KYC rules from {rules_file}: {e}")
+        return []
+
+
+KYC_RULES = load_kyc_rules()
+
+
+def load_fraud_patterns() -> List[Dict[str, Any]]:
+    """Load fraud patterns from fraud_patterns.json under kyc_vector_db"""
+    vector_db_path = os.getenv("VECTOR_DB_PATH", "/data/kyc_vector_db")
+    patterns_file = os.path.join(vector_db_path, "fraud_patterns.json")
+
+    if not os.path.exists(patterns_file):
+        fallback_path = os.path.join("/app/kyc_vector_db", "fraud_patterns.json")
+        if os.path.exists(fallback_path):
+            logger.info(f"Fraud patterns file found in fallback location: {fallback_path}")
+            patterns_file = fallback_path
+        else:
+            logger.warning(f"Fraud patterns file not found: {patterns_file} or {fallback_path}")
+            return []
+
+    try:
+        with open(patterns_file, "r", encoding="utf-8") as f:
+            patterns = json.load(f)
+            logger.info(f"✓ Loaded {len(patterns)} fraud patterns from {patterns_file}")
+            return patterns
+    except Exception as e:
+        logger.warning(f"Error loading fraud patterns from {patterns_file}: {e}")
+        return []
+
+
+FRAUD_PATTERNS = load_fraud_patterns()
+
+
+def _extract_regex_from_rule(requirement: str, document_type: str) -> str | None:
+    """Create a regex expression from rule requirement text for core types.
+    
+    Parses requirement text to infer the correct regex pattern.
+    E.g., "First 5 characters are letters, next 4 are digits, last is letter" → 5-4-1 pattern
+    """
+    doc_lower = (document_type or "").strip().lower()
+    req_lower = (requirement or "").strip().lower()
+
+    if doc_lower == "pan":
+        # Check for 5-4-1 pattern (new rule_001)
+        # Matches: "5 characters", "4 digits", "letter" (singular = last 1 character)
+        has_five = "5" in req_lower and "character" in req_lower
+        has_four = "4" in req_lower and ("digit" in req_lower or "number" in req_lower)
+        has_one = ("letter" in req_lower or "1" in req_lower)
+        
+        if has_five and has_four and has_one:
+            logger.info("PAN rule_001: Detected 5-4-1 pattern from requirement")
+            return r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"
+        
+        # Check for 5-4-1 pattern (standard PAN)
+        has_five = "5" in req_lower and "character" in req_lower
+        if has_five and has_four and has_one:
+            logger.info("PAN rule: Detected 5-4-1 pattern from requirement")
+            return r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"
+        
+        # Default to 5-4-1 (current business requirement)
+        logger.info("PAN rule: Defaulting to 5-4-1 pattern")
+        return r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"
+
+    if doc_lower == "aadhar":
+        return r"\b\d{4}\s?\d{4}\s?\d{4}\b"
+
+    if doc_lower == "passport":
+        return r"\b[A-Z]\d{7}\b"
+
+    # Fallback attempt to infer from requirement description
+    if "12" in req_lower and "digit" in req_lower:
+        return r"\b\d{12}\b"
+
+    return None
+
+
+def apply_kyc_rules(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply rule-driven validation based on loaded kyc_rules.json."""
+    if not KYC_RULES:
+        return {"valid": True, "reason": "No KYC rules loaded"}
+
+    document_type = (data.get("document_type") or "").strip().lower()
+    text = (data.get("text") or "").strip().upper()
+
+    # If no text is available (e.g., image just uploaded but OCR not yet run), skip strict rule validation.
+    if not text:
+        return {"valid": True, "reason": "Text not available yet; skipping KYC rule text validation"}
+
+    if not document_type:
+        return {"valid": False, "reason": "Missing document_type; cannot apply KYC rules"}
+
+    rules_for_type = [rule for rule in KYC_RULES
+                      if rule.get("document_type", "").strip().lower() == document_type]
+
+    if not rules_for_type:
+        # Allow pass through if no rules are defined for this document type
+        return {"valid": True, "reason": f"No KYC rules defined for document type '{document_type}'"}
+
+    # Apply each rule, reject if any critical rule fails
+    for rule in rules_for_type:
+        rule_id = rule.get("rule_id", "unknown")
+        requirement = rule.get("requirement", "")
+        priority = (rule.get("priority", "") or "LOW").upper()
+
+        # allow explicit regex in JSON rule if provided
+        if rule.get("regex"):
+            regex = rule.get("regex")
+        else:
+            regex = _extract_regex_from_rule(requirement, document_type)
+
+        if not regex:
+            logger.warning(f"No regex available for rule {rule_id}; skipping this rule")
+            continue
+
+        try:
+            pattern = re.compile(regex)
+        except re.error as ex:
+            logger.warning(f"Invalid regex in rule {rule_id} ('{regex}'): {ex}; skipping")
+            continue
+
+        if pattern.search(text):
+            logger.info(f"Rule {rule_id} matched for {document_type}")
+            continue
+
+        reason = f"{rule_id} failed: text does not meet requirement '{requirement}'"
+        logger.warning(reason)
+        if priority == "CRITICAL":
+            return {"valid": False, "reason": reason}
+        # non-critical rules may be skipped
+
+    return {"valid": True, "reason": f"All applicable KYC rules passed for {document_type}"}
+
+
+def check_fraud_patterns(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Check for fraud patterns indicators in document data and extracted text."""
+    if not FRAUD_PATTERNS:
+        return {"fraud_detected": False, "patterns_matched": [], "reason": "No fraud patterns loaded"}
+
+    text_lower = (data.get("text") or "").lower()
+    detected_patterns = []
+    risk_level = "LOW"
+
+    # Check each fraud pattern for indicators
+    for pattern in FRAUD_PATTERNS:
+        pattern_id = pattern.get("pattern_id", "unknown")
+        pattern_name = pattern.get("pattern_name", "Unknown")
+        indicators = pattern.get("indicators", [])
+        pattern_risk = pattern.get("risk_level", "MEDIUM").upper()
+
+        # Check if any indicators are found in the text
+        matched_indicators = []
+        for indicator in indicators:
+            if indicator.lower() in text_lower:
+                matched_indicators.append(indicator)
+
+        if matched_indicators:
+            detected_patterns.append({
+                "pattern_id": pattern_id,
+                "pattern_name": pattern_name,
+                "matched_indicators": matched_indicators,
+                "risk_level": pattern_risk
+            })
+            
+            # Update overall risk level to highest detected
+            if pattern_risk == "CRITICAL":
+                risk_level = "CRITICAL"
+            elif pattern_risk == "HIGH" and risk_level != "CRITICAL":
+                risk_level = "HIGH"
+
+    fraud_detected = len(detected_patterns) > 0
+    
+    return {
+        "fraud_detected": fraud_detected,
+        "patterns_matched": detected_patterns,
+        "overall_risk_level": risk_level,
+        "reason": f"{len(detected_patterns)} fraud pattern(s) detected" if fraud_detected else "No fraud patterns detected"
+    }
+
 
 def validate_mandatory_fields(data: Dict[str, Any]) -> tuple[bool, List[str]]:
     """
@@ -126,6 +329,18 @@ async def verify(data: Dict[str, Any]):
         validations = validate_document_content(data)
         logger.info(f"Validations: {validations}")
 
+        # Apply kyc_rules based rules
+        kyc_rule_result = apply_kyc_rules(data)
+        validations["kyc_rule_check"] = kyc_rule_result
+        if not kyc_rule_result.get("valid", False):
+            logger.error(f"🛑 KYC rule check failed: {kyc_rule_result.get('reason')}")
+
+        # Check for fraud patterns
+        fraud_check = check_fraud_patterns(data)
+        validations["fraud_check"] = fraud_check
+        if fraud_check.get("fraud_detected", False):
+            logger.warning(f"⚠️ FRAUD ALERT: {fraud_check.get('reason')} - Risk Level: {fraud_check.get('overall_risk_level')}")
+
         # Perform cross-verification
         sources = ["source1", "source2", "source3"]  # Replace with actual sources
         cross_verifications = cross_verify_with_sources(data, sources)
@@ -134,6 +349,10 @@ async def verify(data: Dict[str, Any]):
         # MANDATORY FIELD CHECK: This is NON-NEGOTIABLE for compliance
         missing_fields = validations.get("missing_fields", [])
         critical_failures = []  # NEW: Track ONLY truly critical failures
+
+        # KYC rule check failure should be treated as critical
+        if not validations.get("kyc_rule_check", {}).get("valid", True):
+            critical_failures.append(validations.get("kyc_rule_check", {}).get("reason", "KYC rule validation failed"))
         
         # CRITICAL FAILURES: Only these are show-stoppers
         # These are failures that make the document unsuitable for KYC under any circumstances
@@ -158,6 +377,15 @@ async def verify(data: Dict[str, Any]):
                 if "fraud" in reason.lower() or "watermark" in reason.lower() or "sample" in reason.lower():
                     critical_failures.append(f"Document authentication failed: {reason}")
                     logger.error(f"🛑 CRITICAL: {reason}")
+
+        # Check 3: Fraud patterns with CRITICAL risk level
+        fraud_check = validations.get("fraud_check", {})
+        if fraud_check.get("fraud_detected", False):
+            patterns_matched = fraud_check.get("patterns_matched", [])
+            for pattern in patterns_matched:
+                if pattern.get("risk_level") == "CRITICAL":
+                    critical_failures.append(f"FRAUD DETECTED: {pattern.get('pattern_name')} - Indicators: {', '.join(pattern.get('matched_indicators', []))}")
+                    logger.error(f"🛑 CRITICAL FRAUD: {pattern.get('pattern_name')}")
         
         # All other missing fields (name, father, DOB, etc.) are NOT critical failures
         # They should be captured as warnings/missing_fields but not block approval
