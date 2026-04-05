@@ -108,11 +108,8 @@ def _extract_regex_from_rule(requirement: str, document_type: str) -> str | None
         logger.info("PAN rule: Defaulting to 5-4-1 pattern")
         return r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"
 
-    if doc_lower == "aadhar":
-        return r"\b\d{4}\s?\d{4}\s?\d{4}\b"
-
-    if doc_lower == "passport":
-        return r"\b[A-Z]\d{7}\b"
+    # PAN-ONLY SYSTEM: Removed Aadhar and Passport validation
+    # Only PAN document type is supported
 
     # Fallback attempt to infer from requirement description
     if "12" in req_lower and "digit" in req_lower:
@@ -291,31 +288,12 @@ def validate_mandatory_fields(data: Dict[str, Any]) -> tuple[bool, List[str]]:
     missing_fields = []
     
     # Define mandatory requirements for each document type
+    # PAN-ONLY SYSTEM: Removed all non-PAN document types
     mandatory_requirements = {
         "pan": {
             "fields": ["name", "date of birth", "pan number", "father", "signature"],
             "requires_photo": True,
             "min_text_length": 50
-        },
-        "aadhar": {
-            "fields": ["aadhaar", "date of birth", "gender"],
-            "requires_photo": True,
-            "min_text_length": 40
-        },
-        "passport": {
-            "fields": ["passport", "date of birth"],
-            "requires_photo": True,
-            "min_text_length": 30
-        },
-        "driving license": {
-            "fields": ["driving", "license", "date of birth"],
-            "requires_photo": True,
-            "min_text_length": 40
-        },
-        "voter id": {
-            "fields": ["voter", "epic", "date of birth"],
-            "requires_photo": True,
-            "min_text_length": 30
         }
     }
     
