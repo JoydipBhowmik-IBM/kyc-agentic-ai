@@ -113,7 +113,7 @@ async def process(file: UploadFile = File(...)):
         if extract_result.get("document_type") == "Unknown":
             logger.warning("❌ Document type identified as 'Unknown' - rejecting without calling other agents")
             workflow_data["final_status"] = "rejected"
-            workflow_data["rejection_reason"] = "Document type is 'Unknown' - cannot process unknown or invalid documents. Please submit a valid KYC document (PAN, Aadhar, Passport, Driving License, Voter ID, Bank Statement, or Utility Bill)."
+            workflow_data["rejection_reason"] = "Document type is 'Unknown' - cannot process unknown or invalid documents. Please submit a valid PAN document."
             workflow_data["document_type"] = "Unknown"
             workflow_data["confidence"] = extract_result.get('confidence', 0.0)
             # Set explicit rejected decision for unknown documents

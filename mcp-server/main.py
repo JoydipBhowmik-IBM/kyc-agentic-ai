@@ -137,76 +137,7 @@ def initialize_kyc_rules():
             "priority": "CRITICAL",
             "tags": ["pan", "india", "tax_id", "format_validation"]
         },
-        {
-            "rule_id": "rule_002",
-            "title": "Aadhar Document Verification",
-            "description": "Aadhar is a 12-digit unique identification number issued by UIDAI",
-            "document_type": "Aadhar",
-            "country": "India",
-            "requirement": "Must be exactly 12 digits, numbers only",
-            "priority": "CRITICAL",
-            "tags": ["aadhar", "india", "biometric_id", "unique_identifier"]
-        },
-        {
-            "rule_id": "rule_003",
-            "title": "Passport Verification",
-            "description": "International passport must be valid and contain biometric data",
-            "document_type": "Passport",
-            "country": "Global",
-            "requirement": "Valid passport issued by recognized government authority",
-            "priority": "CRITICAL",
-            "tags": ["passport", "global", "travel_document", "biometric"]
-        },
-        {
-            "rule_id": "rule_004",
-            "title": "Driving License Verification",
-            "description": "Valid driving license issued by motor vehicle authority",
-            "document_type": "Driving License",
-            "country": "India",
-            "requirement": "Must contain DL number, issue date, and expiry date",
-            "priority": "HIGH",
-            "tags": ["driving_license", "india", "secondary_document"]
-        },
-        {
-            "rule_id": "rule_005",
-            "title": "Address Verification",
-            "description": "Address must match across multiple documents during KYC verification",
-            "document_type": "Multiple",
-            "country": "Global",
-            "requirement": "Consistent address information across all submitted documents",
-            "priority": "CRITICAL",
-            "tags": ["address", "verification", "consistency_check"]
-        },
-        {
-            "rule_id": "rule_006",
-            "title": "Date of Birth Validation",
-            "description": "Date of birth must be consistent and fall within reasonable age range",
-            "document_type": "Multiple",
-            "country": "Global",
-            "requirement": "DOB must be between 18-100 years old, consistent across docs",
-            "priority": "HIGH",
-            "tags": ["age_verification", "consistency", "document_matching"]
-        },
-        {
-            "rule_id": "rule_007",
-            "title": "Name Consistency Across Documents",
-            "description": "Full name must match (or have acceptable variations) across all documents",
-            "document_type": "Multiple",
-            "country": "Global",
-            "requirement": "Exact match or minor variations (middle name, suffix) acceptable",
-            "priority": "CRITICAL",
-            "tags": ["name_verification", "consistency_check", "document_matching"]
-        },
-        {
-            "rule_id": "rule_008",
-            "title": "Document Authenticity Check",
-            "description": "Document must pass authenticity and anti-spoofing checks",
-            "document_type": "Multiple",
-            "country": "Global",
-            "requirement": "No signs of tampering, alteration, or forgery detected",
-            "priority": "CRITICAL",
-            "tags": ["authenticity", "anti_fraud", "document_quality"]
-        }
+        # PAN-ONLY SYSTEM: No additional generic rules needed
     ]
     
     if CHROMADB_AVAILABLE and kyc_rules_collection:

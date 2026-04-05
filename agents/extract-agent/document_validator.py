@@ -9,14 +9,8 @@ from enum import Enum
 from datetime import datetime
 
 class KYCDocumentType(Enum):
-    """Supported KYC document types in India"""
-    AADHAR = "Aadhar"
+    """Supported KYC document types - PAN ONLY"""
     PAN = "PAN"
-    PASSPORT = "Passport"
-    DRIVING_LICENSE = "Driving License"
-    VOTER_ID = "Voter ID"
-    BANK_STATEMENT = "Bank Statement"
-    UTILITY_BILL = "Utility Bill"
     UNKNOWN = "Unknown"
     INVALID = "Invalid"
 
@@ -24,66 +18,12 @@ class DocumentValidator:
     """Validates and classifies KYC documents"""
     
     def __init__(self):
-        """Initialize document patterns for recognition"""
-        self.aadhar_patterns = [
-            r'\b\d{4}\s?\d{4}\s?\d{4}\b',  # 12 digit Aadhar
-            r'aadhar',
-            r'aadhaar',
-            r'uid',
-            r'unique\s*id',
-        ]
-        
+        """Initialize document patterns for recognition - PAN ONLY"""
         self.pan_patterns = [
             r'\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b',  # PAN format
             r'pan\s*card',
             r'pan\s*number',
             r'permanent\s*account\s*number',
-        ]
-        
-        self.passport_patterns = [
-            r'\bA\d{8}\b',  # Indian passport format
-            r'passport',
-            r'passport\s*number',
-            r'machine\s*readable\s*zone',
-        ]
-        
-        self.driving_license_patterns = [
-            r'driving\s*license',
-            r'driving\s*licence',
-            r'dl\s*number',
-            r'license\s*number',
-            r'valid\s*upto',
-        ]
-        
-        self.voter_id_patterns = [
-            r'voter\s*id',
-            r'election\s*commission',
-            r'epic\s*number',
-            r'voter\s*card',
-            r'epic',
-            r'elector',
-            r'electoral',
-            r'voter\s*slip',
-            r'voter\s*list',
-            r'chief\s*electoral',
-        ]
-        
-        self.bank_statement_patterns = [
-            r'bank\s*statement',
-            r'account\s*number',
-            r'ifsc',
-            r'micr',
-            r'statement\s*period',
-            r'balance',
-        ]
-        
-        self.utility_bill_patterns = [
-            r'utility\s*bill',
-            r'electricity\s*bill',
-            r'water\s*bill',
-            r'telephone\s*bill',
-            r'consumer\s*number',
-            r'bill\s*amount',
         ]
 
     def _detect_fraud_indicators(self, text: str) -> Dict:
@@ -181,24 +121,15 @@ class DocumentValidator:
                 "details": []
             }
         
-        # Check each document type
-        scores = {}
-        details = {}
+        # PAN-ONLY SYSTEM: Only check for PAN documents
+        text_lower = text.lower()
+        text_normalized = re.sub(r'\s+', ' ', text_lower)
         
-        scores[KYCDocumentType.AADHAR] = self._check_aadhar(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
-        scores[KYCDocumentType.PAN] = self._check_pan(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
-        scores[KYCDocumentType.PASSPORT] = self._check_passport(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
-        scores[KYCDocumentType.DRIVING_LICENSE] = self._check_driving_license(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
-        scores[KYCDocumentType.VOTER_ID] = self._check_voter_id(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
-        scores[KYCDocumentType.BANK_STATEMENT] = self._check_bank_statement(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
-        scores[KYCDocumentType.UTILITY_BILL] = self._check_utility_bill(text, text.lower(), re.sub(r'\s+', ' ', text.lower()))
+        # Check PAN only
+        best_score = self._check_pan(text, text_lower, text_normalized)
+        best_type = KYCDocumentType.PAN
         
-        # Find best match
-        best_type = max(scores, key=scores.get)
-        best_score = scores[best_type]
-        
-        # Special logic: If Income Tax Department is found, ALWAYS prioritize PAN
-        text_normalized = re.sub(r'\s+', ' ', text.lower())
+        # Determine confidence
         income_tax_keywords = ['income tax', 'income-tax', 'incometax']
         dept_keywords = ['department', 'dept', 'govt of india', 'government of india']
         
@@ -206,28 +137,22 @@ class DocumentValidator:
         has_dept = any(keyword in text_normalized for keyword in dept_keywords)
         
         if has_income_tax and has_dept:
-            # Income Tax Department header is present - definitely a PAN
-            best_type = KYCDocumentType.PAN
-            best_score = max(scores[KYCDocumentType.PAN], 0.95)  # Very high confidence
-        elif has_income_tax and scores[KYCDocumentType.PAN] > 0.25:
-            # Income Tax keyword present with reasonable PAN score
-            best_type = KYCDocumentType.PAN
-            best_score = max(scores[KYCDocumentType.PAN], 0.85)
-        elif re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text) and scores[KYCDocumentType.PAN] > 0.3:
-            # PAN format detected with reasonable score
-            best_type = KYCDocumentType.PAN
-            best_score = max(scores[KYCDocumentType.PAN], 0.80)
+            # Income Tax Department header found - definitely PAN
+            best_score = max(best_score, 0.95)
+        elif has_income_tax and best_score > 0.25:
+            # Income Tax keyword found with reasonable PAN score
+            best_score = max(best_score, 0.85)
+        elif re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', text) and best_score > 0.3:
+            # PAN format detected
+            best_score = max(best_score, 0.80)
+        
+        # If no PAN indicators found, mark as Unknown
+        if best_score < 0.1:
+            best_type = KYCDocumentType.UNKNOWN
         
         # Determine if valid KYC document
-        kyc_document_types = [
-            KYCDocumentType.AADHAR,
-            KYCDocumentType.PAN,
-            KYCDocumentType.PASSPORT,
-            KYCDocumentType.DRIVING_LICENSE,
-            KYCDocumentType.VOTER_ID,
-            KYCDocumentType.BANK_STATEMENT,
-            KYCDocumentType.UTILITY_BILL,
-        ]
+        # PAN-ONLY SYSTEM: Only PAN documents supported
+        kyc_document_types = [KYCDocumentType.PAN]
         
         # CRITICAL: Check for fraud indicators FIRST
         # If document is fraudulent (watermarked, fake, etc), REJECT immediately
@@ -239,29 +164,26 @@ class DocumentValidator:
                 "document_type": best_type.value,
                 "confidence": round(best_score, 2),
                 "reason": f"DOCUMENT REJECTED: {fraud_check['fraud_reason']} - Fraudulent or non-original document",
-                "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
+                "all_scores": {"PAN": round(best_score, 2)},
                 "extracted_patterns": self._extract_key_patterns(text, best_type),
                 "fraud_detected": True,
                 "fraud_indicators": fraud_check['indicators']
             }
         
-        # Special handling for PAN documents - they're primary KYC documents
-        # Use lower threshold (0.20) for PAN since it's a critical document
-        if best_type == KYCDocumentType.PAN:
-            is_valid = best_score > 0.20
-        else:
-            is_valid = best_type in kyc_document_types and best_score > 0.3
+        # PAN-ONLY: Use threshold (0.20) for PAN validation
+        is_valid = best_type == KYCDocumentType.PAN and best_score > 0.20
         
         # If score is very low, mark as Unknown instead of a specific type
         if best_score < 0.1:
             best_type = KYCDocumentType.UNKNOWN
+            is_valid = False
         
         result = {
             "is_valid_kyc": is_valid,
             "document_type": best_type.value,
             "confidence": round(best_score, 2),
             "reason": self._get_reason(best_type, best_score, is_valid),
-            "all_scores": {doc_type.value: round(score, 2) for doc_type, score in scores.items()},
+            "all_scores": {"PAN": round(best_score, 2)},
             "extracted_patterns": self._extract_key_patterns(text, best_type),
             "fraud_detected": False
         }

@@ -727,8 +727,8 @@
             details: {
                 rag: 'Retrieval Augmented Generation',
                 mcp: 'Model Context Protocol',
-                tools: ['retrieve_kyc_rules', 'retrieve_fraud_patterns', 'retrieve_compliance_docs'],
-                context: ['KYC Rules', 'Fraud Patterns', 'Compliance Guidelines', 'Vector DB']
+                tools: ['retrieve_kyc_rules', 'retrieve_fraud_patterns'],
+                context: ['KYC Rules', 'Fraud Patterns', 'Vector DB']
             }
         },
         {
@@ -888,16 +888,13 @@
 
         const mcpTools = [
             '🔗 retrieve_kyc_rules',
-            '⚠️ retrieve_fraud_patterns',
-            '📋 retrieve_compliance_docs',
-            '🔍 retrieve_aml_guidelines'
+            '⚠️ retrieve_fraud_patterns'
         ];
 
         const retrievedContext = [
-            '✓ KYC Rules (25 rules loaded)',
-            '✓ Fraud Patterns (12 patterns matched)',
-            '✓ Compliance Guidelines (8 docs retrieved)',
-            '✓ Vector DB Results (42 similar documents)'
+            '✓ KYC Rules (7 rules loaded)',
+            '✓ Fraud Patterns (10 patterns matched)',
+            '✓ Vector DB Results (PAN-specific validation)'
         ];
 
         let contextHTML = `
@@ -1084,21 +1081,6 @@
             html += `<div style="color: #991b1b; font-size: 0.95em; margin-top: 12px;"><strong>Reason:</strong> ${rejectionReason}</div>`;
             html += '</div>';
 
-            // Show all scores if available
-            const allScores = data.all_scores || result.all_scores || (result.extract && result.extract.all_scores);
-            if (allScores && Object.keys(allScores).length > 0) {
-                html += '<div class="result-item">';
-                html += '<div class="result-label">Document Type Analysis</div>';
-                let scoresHtml = '<div style="font-size: 0.9em; margin-top: 8px; padding: 10px; background: #f8f9fa; border-radius: 5px;">';
-                for (const [type, score] of Object.entries(allScores)) {
-                    const percentage = (score * 100).toFixed(1);
-                    scoresHtml += `<div style="margin: 5px 0;"><strong>${type}:</strong> ${percentage}%</div>`;
-                }
-                scoresHtml += '</div>';
-                html += scoresHtml;
-                html += '</div>';
-            }
-
             if (data.processing_time_seconds) {
                 html += '<div class="result-item">';
                 html += '<div class="result-label">Processing Time</div>';
@@ -1220,6 +1202,28 @@
             html += `<div style="color: #0f5132; font-size: 0.95em; margin-top: 8px;">Document Identification Confidence: <strong>${(docConfidence * 100).toFixed(1)}%</strong></div>`;
         }
         html += '</div>';
+
+        // ═══════════════════════════════════════════════════════════════
+        // DISPLAY FAILED KYC RULES - NEW SECTION
+        // ═══════════════════════════════════════════════════════════════
+        const failedRules = result.verify && result.verify.failed_rules ? result.verify.failed_rules : [];
+        
+        if (failedRules && failedRules.length > 0) {
+            html += '<div class="result-item" style="background: #fee2e2; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ef4444;">';
+            html += '<div class="result-label" style="color: #991b1b; font-size: 1.1em;"><strong>⚠️ KYC Rules Violated</strong></div>';
+            html += `<div style="color: #991b1b; font-size: 0.95em; margin-top: 8px; margin-bottom: 12px;"><strong>${failedRules.length} rule(s) failed validation:</strong></div>`;
+            
+            failedRules.forEach((rule, index) => {
+                html += '<div style="background: white; padding: 12px; border-radius: 5px; margin-bottom: 10px; border-left: 3px solid #ef4444;">';
+                html += `<div style="color: #991b1b; font-weight: bold; font-size: 0.95em;">❌ ${rule.rule_id || 'Unknown'}: ${rule.rule_title || rule.name || 'Unnamed Rule'}</div>`;
+                if (rule.priority) html += `<div style="color: #666; font-size: 0.85em; margin-top: 4px;"><strong>Priority:</strong> ${rule.priority}</div>`;
+                if (rule.requirement) html += `<div style="color: #666; font-size: 0.85em; margin-top: 2px;"><strong>Requirement:</strong> ${rule.requirement}</div>`;
+                if (rule.reason) html += `<div style="color: #991b1b; font-size: 0.85em; margin-top: 2px;"><strong>Why Failed:</strong> ${rule.reason}</div>`;
+                html += '</div>';
+            });
+            
+            html += '</div>';
+        }
 
         html += '<div class="result-item">';
         html += '<div class="result-label">Final Decision</div>';
