@@ -10,7 +10,13 @@ import subprocess
 import os
 import numpy as np
 
-logging.basicConfig(level=logging.INFO)
+# Set logging level from environment, default to WARNING to reduce noise
+log_level = os.getenv('LOG_LEVEL', 'WARNING').upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.WARNING))
+
+# Suppress ChromaDB telemetry noisy logs
+logging.getLogger('chromadb.telemetry').setLevel(logging.ERROR)
+logging.getLogger('chromadb').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Extract Agent", version="1.0.0")
