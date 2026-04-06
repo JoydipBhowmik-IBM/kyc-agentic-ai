@@ -6,9 +6,12 @@ from typing import Dict, Any, List
 import json
 import os
 
+# Set logging level from environment, default to WARNING to reduce noise
+log_level = os.getenv('LOG_LEVEL', 'WARNING').upper()
+
 # Configure logging to output to stdout/stderr
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.WARNING),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -16,7 +19,10 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+
+# Suppress ChromaDB telemetry noisy logs
+logging.getLogger('chromadb.telemetry').setLevel(logging.ERROR)
+logging.getLogger('chromadb').setLevel(logging.WARNING)
 
 # LangChain imports for decision-making (optional, for future enhancement)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")

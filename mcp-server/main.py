@@ -12,6 +12,16 @@ from pydantic import BaseModel
 import os
 from datetime import datetime
 
+# Set logging level from environment, default to WARNING to reduce noise
+log_level = os.getenv('LOG_LEVEL', 'WARNING').upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.WARNING))
+
+# Suppress ChromaDB telemetry noisy logs
+logging.getLogger('chromadb.telemetry').setLevel(logging.ERROR)
+logging.getLogger('chromadb').setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
+
 # Custom JSON encoder to handle ChromaDB objects
 class ChromaDBSafeEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -33,9 +43,6 @@ try:
     CHROMADB_AVAILABLE = True  # Re-enable ChromaDB with proper handling
 except ImportError:
     CHROMADB_AVAILABLE = False
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="KYC MCP Server",

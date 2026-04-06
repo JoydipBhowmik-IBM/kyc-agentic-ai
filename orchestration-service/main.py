@@ -6,8 +6,14 @@ import json
 from datetime import datetime
 from typing import Dict, Any
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Set logging level from environment, default to WARNING to reduce noise
+log_level = os.getenv('LOG_LEVEL', 'WARNING').upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.WARNING))
+
+# Suppress ChromaDB telemetry noisy logs
+logging.getLogger('chromadb.telemetry').setLevel(logging.ERROR)
+logging.getLogger('chromadb').setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="KYC Orchestration Service", version="1.0.0")
@@ -151,9 +157,20 @@ async def process(file: UploadFile = File(...)):
 
         if "error" in extract_result:
             logger.error(f"Extraction failed: {extract_result['error']}")
-            workflow_data["final_status"] = "error"
+            workflow_data["final_status"] = "rejected"
+            workflow_data["document_type"] = "Unknown"
+            workflow_data["rejection_reason"] = f"Document extraction failed: {extract_result['error']} - Unable to process document"
+            # Set explicit rejected decision for extraction errors
+            workflow_data["decision"] = {
+                "status": "rejected",
+                "decision": "REJECTED",
+                "reason": workflow_data["rejection_reason"],
+                "confidence": 1.0,
+                "regulatory_action": "REJECT"
+            }
             elapsed_time = (datetime.now() - start_time).total_seconds()
             workflow_data["processing_time_seconds"] = elapsed_time
+            logger.info(f"Extraction failed - Workflow terminated in {elapsed_time}s")
             return workflow_data
 
         # Preserve document_type and confidence from extraction for successful documents
