@@ -8,6 +8,8 @@ volumes:
     driver: local
   kyc-logs:
     driver: local
+  ollama:
+    driver: local
 
 services:
 
@@ -152,6 +154,53 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
+
+  # Ollama - LLM Service for AI Analysis
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Ollama Model Init - Pulls required models
+  ollama-init:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    command: >
+      sh -c "
+      echo '[1/2] Waiting for Ollama to be ready...' &&
+      until curl -f http://ollama:11434/api/health > /dev/null 2>&1; do
+        sleep 2
+      done &&
+      echo '[2/2] Pulling Mistral model...' &&
+      ollama pull mistral &&
+      echo 'Model pull complete. Container will now sleep.' &&
+      sleep infinity
+      "
+    depends_on:
+      - ollama
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: "no"
 
   # Reason Agent - AI Analysis with RAG
   reason-agent:
