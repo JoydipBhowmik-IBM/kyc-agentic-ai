@@ -12,6 +12,17 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Verify Agent", version="1.0.0")
 
+# Import mock validation API
+try:
+    from mock_validation_api import MockPANValidator
+    mock_validator = MockPANValidator()
+    USE_MOCK_API = os.getenv("USE_MOCK_API", "true").lower() == "true"
+    logger.info(f"Mock PAN Validator initialized. USE_MOCK_API={USE_MOCK_API}")
+except ImportError:
+    mock_validator = None
+    USE_MOCK_API = False
+    logger.warning("Mock validation API not available")
+
 class VerificationRequest(BaseModel):
     model_config = ConfigDict(extra='allow')
     
@@ -344,6 +355,51 @@ def validate_document_content(data: Dict[str, Any]) -> Dict[str, Any]:
 
     return base_validations
 
+
+def check_with_mock_api(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Check validation using mock API if enabled and available"""
+    if not USE_MOCK_API or not mock_validator:
+        return None
+    
+    try:
+        # Extract PAN number from data
+        extracted_text = data.get("text", "").upper()
+        pan_match = re.search(r'[A-Z]{5}[0-9]{4}[A-Z]{1}', extracted_text)
+        
+        if not pan_match:
+            logger.warning("No PAN number found in extracted text for mock validation")
+            return None
+        
+        pan_number = pan_match.group(0)
+        
+        # Extract name from data if available
+        name = extracted_text.split('\n')[0] if extracted_text else None
+        
+        logger.info(f"Using MOCK API to validate PAN: {pan_number}")
+        
+        # Call mock validator
+        mock_result = mock_validator.validate_pan(
+            pan_number=pan_number,
+            name=name
+        )
+        
+        logger.info(f"Mock API Result: Status={mock_result['status']}, Confidence={mock_result['confidence']}")
+        
+        return {
+            "mock_api_enabled": True,
+            "pan_number": pan_number,
+            "mock_status": mock_result['status'],
+            "mock_confidence": mock_result['confidence'],
+            "mock_reason": mock_result['details']['reason'],
+            "mock_checks_passed": mock_result['details'].get('checks_passed', []),
+            "mock_checks_failed": mock_result['details'].get('checks_failed', []),
+            "is_mock": mock_result.get('is_mock', True)
+        }
+    except Exception as e:
+        logger.error(f"Error calling mock API: {str(e)}")
+        return None
+
+
 def cross_verify_with_sources(data: Dict[str, Any], sources: List[str]) -> Dict[str, Any]:
     """Perform cross-verification against multiple sources."""
     cross_verifications = {}
@@ -363,6 +419,25 @@ async def verify(data: Dict[str, Any]):
         # Perform validation checks
         validations = validate_document_content(data)
         logger.info(f"Validations: {validations}")
+
+        # ====== MOCK API CHECK (if enabled) ======
+        # This takes priority over other checks for testing
+        mock_api_result = check_with_mock_api(data)
+        if mock_api_result:
+            logger.info(f"Mock API validation: {mock_api_result['mock_status']}")
+            validations["mock_api_validation"] = mock_api_result
+            
+            # CRITICAL: If mock API says REJECTED, return REJECTED immediately
+            if mock_api_result['mock_status'] == "REJECTED":
+                logger.error(f"MOCK API REJECTION: {mock_api_result['mock_reason']}")
+                return {
+                    "status": "rejected_by_mock_api",
+                    "verified": False,
+                    "confidence_score": 0.0,
+                    "reason": mock_api_result['mock_reason'],
+                    "mock_api_result": mock_api_result,
+                    "validations": validations
+                }
 
         # Apply kyc_rules based rules
         kyc_rule_result = apply_kyc_rules(data)
