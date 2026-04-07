@@ -16,10 +16,10 @@
 
 ```bash
 # 1. Clone/extract repository
-cd FinalSolution
+cd kyc-agentic-ai
 
 # 2. Copy environment config
-cp .env.template .env
+cp .env.example .env
 
 # 3. Initialize vector database
 python3 init_vector_db_simple.py
@@ -110,13 +110,13 @@ docker-compose logs orchestration-service
 
 ```bash
 # Check Ollama status
-docker logs kyc-ollama
+docker logs ollama
 
 # Manually pull model
-docker exec kyc-ollama ollama pull mistral
+docker exec ollama ollama pull mistral
 
 # Wait for completion
-docker logs -f kyc-ollama
+docker logs -f ollama
 ```
 
 ---
@@ -142,7 +142,6 @@ docker logs -f kyc-ollama
 
 - **Installation**: See `INSTALLATION.md` for detailed setup
 - **Architecture**: See `ARCHITECTURE.md` for system design
-- **API Docs**: Visit http://localhost:8000/docs (Swagger UI)
 
 ---
 
@@ -167,4 +166,3 @@ docker logs -f kyc-ollama
 ---
 
 **Last Updated**: April 7, 2026
-
